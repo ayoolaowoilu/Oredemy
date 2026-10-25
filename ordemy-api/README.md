@@ -17,6 +17,9 @@ Requirements: Node.js and MySQL.
    DB_NAME=ordemy
    DB_PORT=3306
    JWT_SECRET=replace_with_a_long_random_secret
+   CACHE_ENABLED=true
+   CACHE_TTL_SECONDS=30
+   CACHE_MAX_ENTRIES=500
    ```
 
 3. Install and start:
@@ -118,6 +121,29 @@ await axios.post(
   },
 );
 ```
+
+## Server-side response cache
+
+The API has a small in-memory cache in [`src/middleware/response-cache.js`](./src/middleware/response-cache.js). It caches successful JSON responses for:
+
+- `GET /api/fetch/questions` (after authentication and lecturer verification).
+- `GET /api/admin/schools`, `/api/admin/faculties`, and `/api/admin/departments` (after admin authentication).
+
+Cache entries are isolated by signed-in user and full request URL, including query parameters. Responses are only cached server-side; `Cache-Control: private, no-store` prevents browsers or shared proxies from keeping a separate copy. Cached responses include `X-Cache: HIT` or `X-Cache: MISS` so the frontend can inspect cache behavior while debugging.
+
+### Change cache settings
+
+Set these values in the API `.env` file, then restart the server:
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `CACHE_ENABLED` | `true` | Set to `false` to bypass caching without changing routes |
+| `CACHE_TTL_SECONDS` | `30` | Seconds a cached response remains valid; must be a positive integer |
+| `CACHE_MAX_ENTRIES` | `500` | Maximum number of entries held in process memory; least-recently-used entries are evicted first when this is reached |
+
+Responses larger than 1 MiB are not cached. Every successful non-GET API request clears the cache, so new complaints, edits, deletions, admin updates, and lecturer verification changes show up on the next read. Failed requests do not clear it.
+
+This cache is stored in the Node.js process: it resets on restart and is not shared between multiple API instances. For a multi-instance deployment, replace the `Map` storage/get/set/delete/clear operations in `response-cache.js` with Redis; keep the per-user key, TTL, and invalidation behavior. No Redis server or extra package is required for the current single-instance setup.
 
 ## Endpoint index
 
