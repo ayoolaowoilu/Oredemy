@@ -7,7 +7,7 @@ Express and MySQL API for authentication, complaints, lecturer dashboards, class
 Requirements: Node.js and MySQL.
 
 1. Create the database and tables using [`data.sql`](./data.sql), or apply the migration for an existing database described under [Database setup](#database-setup).
-2. Create an `.env` file in this directory:
+2. Create or update `.env` in this directory using [`.env.example`](./.env.example) as a template. Keep any existing database/JWT credentials when adding the cache settings:
 
    ```env
    PORT=8081
@@ -18,8 +18,11 @@ Requirements: Node.js and MySQL.
    DB_PORT=3306
    JWT_SECRET=replace_with_a_long_random_secret
    CACHE_ENABLED=true
+   CACHE_STORE=memory
    CACHE_TTL_SECONDS=30
    CACHE_MAX_ENTRIES=500
+   REDIS_URL=redis://localhost:6379
+   REDIS_KEY_PREFIX=ordemy:response:
    ```
 
 3. Install and start:
@@ -124,7 +127,7 @@ await axios.post(
 
 ## Server-side response cache
 
-The API has a small in-memory cache in [`src/middleware/response-cache.js`](./src/middleware/response-cache.js). It caches successful JSON responses for:
+The API supports a selectable cache in [`src/middleware/response-cache.js`](./src/middleware/response-cache.js). It caches successful JSON responses for:
 
 - `GET /api/fetch/questions` (after authentication and lecturer verification).
 - `GET /api/admin/schools`, `/api/admin/faculties`, and `/api/admin/departments` (after admin authentication).
@@ -133,17 +136,41 @@ Cache entries are isolated by signed-in user and full request URL, including que
 
 ### Change cache settings
 
-Set these values in the API `.env` file, then restart the server:
+Set these values in the API `.env` file, then restart the server. **Set `CACHE_STORE` to choose the cache service**:
 
 | Setting | Default | Effect |
 | --- | --- | --- |
 | `CACHE_ENABLED` | `true` | Set to `false` to bypass caching without changing routes |
+| `CACHE_STORE` | `memory` | `memory` uses this API process; set to `redis` to use Redis |
 | `CACHE_TTL_SECONDS` | `30` | Seconds a cached response remains valid; must be a positive integer |
-| `CACHE_MAX_ENTRIES` | `500` | Maximum number of entries held in process memory; least-recently-used entries are evicted first when this is reached |
+| `CACHE_MAX_ENTRIES` | `500` | Maximum number of in-memory entries; least-recently-used entries are evicted first. Not used by Redis. |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL; used when `CACHE_STORE=redis`. Include credentials/TLS options in the URL when required by your Redis provider. |
+| `REDIS_KEY_PREFIX` | `ordemy:response:` | Prefix for this API's Redis keys, useful when Redis is shared by multiple apps/environments |
+
+**Current in-memory cache:**
+
+```env
+CACHE_ENABLED=true
+CACHE_STORE=memory
+CACHE_TTL_SECONDS=30
+CACHE_MAX_ENTRIES=500
+```
+
+**Switch to Redis:**
+
+```env
+CACHE_ENABLED=true
+CACHE_STORE=redis
+CACHE_TTL_SECONDS=30
+REDIS_URL=redis://localhost:6379
+REDIS_KEY_PREFIX=ordemy:response:
+```
+
+Install the API dependencies with `npm install`; the Redis client is included. Start a Redis service and set `REDIS_URL` to its connection URL. `rediss://` URLs are supported for TLS-enabled Redis services. Restart the API after changing cache environment variables.
 
 Responses larger than 1 MiB are not cached. Every successful non-GET API request clears the cache, so new complaints, edits, deletions, admin updates, and lecturer verification changes show up on the next read. Failed requests do not clear it.
 
-This cache is stored in the Node.js process: it resets on restart and is not shared between multiple API instances. For a multi-instance deployment, replace the `Map` storage/get/set/delete/clear operations in `response-cache.js` with Redis; keep the per-user key, TTL, and invalidation behavior. No Redis server or extra package is required for the current single-instance setup.
+The memory cache resets on restart and is not shared between API instances. Redis shares cached responses between instances. If Redis is temporarily unavailable, the API logs the cache error and bypasses caching so requests can still use MySQL; restore Redis to resume cache hits.
 
 ## Endpoint index
 
