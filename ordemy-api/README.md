@@ -31,11 +31,93 @@ Base URL locally: `http://localhost:8081`. `GET /` is a health check and returns
 ## Quick start for frontend developers
 
 - Send JSON requests with `Content-Type: application/json`.
-- For authenticated routes, send **either** `x-token: <JWT>` **or** `Authorization: Bearer <JWT>`.
+- Register and login are public: they do not need an authentication header.
 - Obtain a JWT from register or login. It expires after one hour.
+- For every other protected route, add the JWT in the request **Headers** (not in the URL or JSON body). Use either `x-token` with the raw JWT, or `Authorization` with `Bearer`, one space, then the JWT. The examples below show exactly where to set them.
 - The example API responses below show the JSON body only; HTTP status codes are shown with each endpoint.
 - User IDs are UUID strings. IDs for schools, faculties, departments, complaints, and class-rep requests are integers.
 - Use the matching request/response interfaces in [`types.ts`](./types.ts).
+
+### Where to put request headers
+
+**In Postman**
+
+1. Open the request and select the **Headers** tab.
+2. Add one of these rows:
+
+   | Key | Value |
+   | --- | --- |
+   | `x-token` | Paste the JWT returned by register/login (without quotes and without `Bearer`) |
+
+   Or use the standard Authorization header:
+
+   | Key | Value |
+   | --- | --- |
+   | `Authorization` | Type `Bearer`, add one space, then paste the JWT |
+
+3. For requests with a JSON body, select **Body → raw → JSON**. Postman will set `Content-Type: application/json`; if setting it yourself, add it in the **Headers** tab.
+4. Do not add the JWT to the URL, query string, or request body. Do not set an auth header for `POST /api/auth/register` or `POST /api/auth/login`.
+
+**In browser `fetch`**
+
+Set the `headers` property in the request options. This example uses `Authorization`; use `x-token: token` instead if preferred:
+
+```ts
+const token = loginResponse.token;
+
+const response = await fetch("http://localhost:8081/api/auth/userdata", {
+  method: "GET",
+  headers: {
+    Authorization: ["Bearer", token].join(" "),
+  },
+});
+
+const profile = await response.json();
+```
+
+For a JSON POST, include both headers and serialize the body:
+
+```ts
+const response = await fetch("http://localhost:8081/api/query/add", {
+  method: "POST",
+  headers: {
+    Authorization: ["Bearer", token].join(" "),
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    queryData: {
+      subject: "Exam results",
+      query: "Please help me check my result.",
+      session: "2025/2026",
+      query_type: "Results",
+      query_for: "Department",
+    },
+  }),
+});
+```
+
+To use the custom token header with `fetch`, change the `Authorization` line to `"x-token": token`.
+
+**In Axios**
+
+Pass headers in the third argument for a POST (or in the second argument for a GET):
+
+```ts
+await axios.get("http://localhost:8081/api/auth/userdata", {
+  headers: { Authorization: ["Bearer", token].join(" ") },
+});
+
+await axios.post(
+  "http://localhost:8081/api/query/add",
+  { queryData: { subject, query, session, query_type: "Results" } },
+  {
+    headers: {
+      Authorization: ["Bearer", token].join(" "),
+      "Content-Type": "application/json",
+    },
+  },
+);
+```
 
 ## Endpoint index
 
