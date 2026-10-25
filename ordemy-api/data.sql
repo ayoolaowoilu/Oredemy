@@ -99,5 +99,6 @@ CREATE TABLE queries(
      session varchar(200),
      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
      INDEX idx_queries_session_user (session, user_id),
+     INDEX idx_queries_session_type_created (session, query_type, created_at),
      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
