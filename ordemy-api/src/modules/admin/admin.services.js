@@ -126,3 +126,37 @@ export async function deleteAdminResource(resourceName, id) {
     if (result.affectedRows === 0) throw new HttpError(404, "Record not found");
     return { message: "Record deleted" };
 }
+
+export async function listUnverifiedLecturers() {
+    const [rows] = await pool.query(
+        `SELECT id, name, email, faculty_id, department_id, created_at
+         FROM users
+         WHERE role = 'lecturer' AND is_verified = 0
+         ORDER BY created_at ASC`
+    );
+    return { data: rows };
+}
+
+export async function verifyLecturer(id, isVerified) {
+    if (
+        typeof id !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+    ) {
+        throw new HttpError(400, "A valid lecturer UUID is required");
+    }
+    if (typeof isVerified !== "boolean") {
+        throw new HttpError(400, "is_verified must be a boolean");
+    }
+    const [result] = await pool.query(
+        "UPDATE users SET is_verified = ? WHERE id = ? AND role = 'lecturer'",
+        [isVerified, id]
+    );
+    if (result.affectedRows === 0) {
+        const [rows] = await pool.query(
+            "SELECT id FROM users WHERE id = ? AND role = 'lecturer'",
+            [id]
+        );
+        if (rows.length === 0) throw new HttpError(404, "Lecturer not found");
+    }
+    return { message: isVerified ? "Lecturer verified" : "Lecturer verification revoked" };
+}

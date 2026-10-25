@@ -5,14 +5,17 @@ import { ValidateQuestionFetch } from "./fetch.validation.js";
 const QUERY_TYPES = ["Results", "Facilities", "Timetable", "Other"];
 
 export async function FetchLecturerQuestions(query, lecturerId) {
-    const { session, scope, page, limit, queryType } = ValidateQuestionFetch(query);
+    const { session, scope, page, limit, queryTypes, from, to } = ValidateQuestionFetch(query);
     const [lecturers] = await pool.query(
-        "SELECT faculty_id, department_id FROM users WHERE id = ? AND role = 'lecturer'",
+        "SELECT faculty_id, department_id, is_verified FROM users WHERE id = ? AND role = 'lecturer'",
         [lecturerId]
     );
     const lecturer = lecturers[0];
     if (!lecturer) {
         throw new HttpError(403, "This endpoint is available to lecturers only");
+    }
+    if (!lecturer.is_verified) {
+        throw new HttpError(403, "Your lecturer account must be verified by an administrator first");
     }
     if (scope === "department" && !lecturer.department_id) {
         throw new HttpError(400, "Your lecturer account is not assigned to a department");
@@ -25,13 +28,23 @@ export async function FetchLecturerQuestions(query, lecturerId) {
         ? "question_user.department_id = ?"
         : "question_user.faculty_id = ?";
     const scopeId = scope === "department" ? lecturer.department_id : lecturer.faculty_id;
+    const baseWhereParts = [`questions.session = ?`, scopeCondition];
     const baseParameters = [session, scopeId];
-    const queryTypeCondition = queryType ? " AND questions.query_type = ?" : "";
-    const filteredParameters = queryType
-        ? [...baseParameters, queryType]
+    if (from) {
+        baseWhereParts.push("questions.created_at >= ?");
+        baseParameters.push(from);
+    }
+    if (to) {
+        baseWhereParts.push("questions.created_at < DATE_ADD(?, INTERVAL 1 DAY)");
+        baseParameters.push(to);
+    }
+    const baseWhere = baseWhereParts.join(" AND ");
+    const filteredWhere = queryTypes
+        ? `${baseWhere} AND questions.query_type IN (${queryTypes.map(() => "?").join(", ")})`
+        : baseWhere;
+    const filteredParameters = queryTypes
+        ? [...baseParameters, ...queryTypes]
         : baseParameters;
-    const baseWhere = `questions.session = ? AND ${scopeCondition}`;
-    const filteredWhere = `${baseWhere}${queryTypeCondition}`;
 
     const [totalRows] = await pool.query(
         `SELECT COUNT(*) AS total
@@ -57,7 +70,10 @@ export async function FetchLecturerQuestions(query, lecturerId) {
     const departmentScopeFilter = scope === "department"
         ? "departments.id = ?"
         : "departments.faculty_id = ?";
-    const departmentParameters = [scopeId, session, scopeId];
+    const departmentParameters = [scopeId, session];
+    if (from) departmentParameters.push(from);
+    if (to) departmentParameters.push(to);
+    departmentParameters.push(scopeId);
     const [departmentRows] = await pool.query(
         `SELECT departments.id AS department_id, departments.name AS department,
                 COUNT(questions.id) AS total
@@ -65,7 +81,7 @@ export async function FetchLecturerQuestions(query, lecturerId) {
          LEFT JOIN users AS question_user
            ON question_user.department_id = departments.id AND ${scopeCondition}
          LEFT JOIN queries AS questions
-           ON questions.user_id = question_user.id AND questions.session = ?
+           ON questions.user_id = question_user.id AND questions.session = ?${from ? " AND questions.created_at >= ?" : ""}${to ? " AND questions.created_at < DATE_ADD(?, INTERVAL 1 DAY)" : ""}
          WHERE ${departmentScopeFilter}
          GROUP BY departments.id, departments.name
          ORDER BY departments.name`,

@@ -13,8 +13,8 @@ export async function RegisterUser(userData) {
     const role = userData.role ?? "student";
 
     await pool.query(
-        "INSERT INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)",
-        [id, userData.name, userData.email, password, role]
+        "INSERT INTO users (id, name, email, password, role, is_verified) VALUES (?, ?, ?, ?, ?, ?)",
+        [id, userData.name, userData.email, password, role, role !== "lecturer"]
     );
 
     return {
@@ -24,6 +24,7 @@ export async function RegisterUser(userData) {
             name: userData.name,
             email: userData.email,
             role,
+            is_verified: role !== "lecturer",
         },
         message: "Registration Successful",
     };
@@ -32,7 +33,7 @@ export async function RegisterUser(userData) {
 export async function LoginUser(userData) {
     LoginSchema(userData);
     const [rows] = await pool.query(
-        "SELECT id, name, email, password, role FROM users WHERE email = ?",
+        "SELECT id, name, email, password, role, is_verified FROM users WHERE email = ?",
         [userData.email]
     );
     if (rows.length === 0) {
@@ -55,6 +56,7 @@ export async function LoginUser(userData) {
             name: rows[0].name,
             email: rows[0].email,
             role: rows[0].role,
+            is_verified: Boolean(rows[0].is_verified),
         },
         message: "Login Successful",
     };
@@ -62,7 +64,8 @@ export async function LoginUser(userData) {
 
 export async function GetUserData(userId) {
     const [rows] = await pool.query(
-        `SELECT users.id, users.name, users.email, users.role, users.session,
+        `SELECT users.id, users.name, users.email, users.role,
+                users.is_verified, users.session,
                 faculties.name AS faculty, departments.name AS department,
                 users.created_at
          FROM users
@@ -71,5 +74,6 @@ export async function GetUserData(userId) {
          WHERE users.id = ?`,
         [userId]
     );
-    return rows[0];
+    if (!rows[0]) return undefined;
+    return { ...rows[0], is_verified: Boolean(rows[0].is_verified) };
 }

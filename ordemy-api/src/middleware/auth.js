@@ -20,14 +20,30 @@ export async function authenticate(req, res, next) {
     }
 
     const [rows] = await pool.query(
-        "SELECT id, role FROM users WHERE id = ?",
+        "SELECT id, role, is_verified FROM users WHERE id = ?",
         [payload.id]
     );
     if (rows.length === 0) {
         return res.status(401).json({ message: "Authenticated user not found" });
     }
 
-    req.authUser = { id: rows[0].id, role: rows[0].role };
+    req.authUser = {
+        id: rows[0].id,
+        role: rows[0].role,
+        is_verified: Boolean(rows[0].is_verified),
+    };
+    return next();
+}
+
+export function requireVerifiedLecturer(req, res, next) {
+    if (req.authUser?.role !== "lecturer") {
+        return res.status(403).json({ message: "Lecturer access required" });
+    }
+    if (!req.authUser.is_verified) {
+        return res.status(403).json({
+            message: "Your lecturer account must be verified by an administrator first",
+        });
+    }
     return next();
 }
 

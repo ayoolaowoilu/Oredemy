@@ -22,6 +22,7 @@ export interface AuthUser {
     name: string;
     email: string;
     role: UserRole;
+    is_verified: boolean;
 }
 
 export interface AuthResponse {
@@ -105,7 +106,9 @@ export interface FetchQuestionsQuery {
     scope?: QuestionFetchScope;
     page?: number;
     limit?: number;
-    query_type?: QueryType;
+    query_type?: QueryType | QueryType[];
+    from?: string;
+    to?: string;
 }
 
 export interface LecturerQuestion {
@@ -149,6 +152,53 @@ export interface FetchQuestionsResponse {
         bySection: SectionQuestionCount[];
         byDepartment: DepartmentQuestionCount[];
     };
+}
+
+export type ClassRepRequestStatus = "pending" | "approved" | "rejected";
+
+export interface SubmitClassRepRequest {
+    message?: string;
+}
+
+export interface ReviewClassRepRequest {
+    status: "approved" | "rejected";
+    note?: string;
+}
+
+export interface ClassRepRequest {
+    id: number;
+    student_id: string;
+    student_name?: string;
+    department_id: number;
+    department?: string;
+    session: string;
+    message: string | null;
+    status: ClassRepRequestStatus;
+    reviewed_by?: string | null;
+    decision_note?: string | null;
+    created_at?: string;
+    reviewed_at?: string | null;
+}
+
+export interface ClassRepRequestResponse {
+    data: ClassRepRequest;
+}
+
+export interface ClassRepRequestListResponse {
+    data: ClassRepRequest[];
+}
+
+export interface PendingLecturer {
+    id: string;
+    name: string;
+    email: string;
+    faculty_id: number | null;
+    department_id: number | null;
+    created_at: string;
+}
+
+export interface LecturerVerificationRequest {
+    is_verified: boolean;
 }
 
 export interface School {

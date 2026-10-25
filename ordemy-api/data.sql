@@ -52,6 +52,8 @@ CREATE TABLE users (
     role ENUM('lecturer', 'admin', 'student')
         NOT NULL DEFAULT 'student',
 
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+
     image TEXT NULL,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -65,6 +67,26 @@ CREATE TABLE users (
         FOREIGN KEY (department_id)
         REFERENCES departments(id)
         ON DELETE SET NULL
+);
+
+CREATE TABLE class_rep_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id VARCHAR(36) NOT NULL,
+    department_id INT NOT NULL,
+    session VARCHAR(50) NOT NULL,
+    message VARCHAR(1000) NULL,
+    status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+    reviewed_by VARCHAR(36) NULL,
+    decision_note VARCHAR(1000) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMP NULL,
+    INDEX idx_class_rep_department_session_status (department_id, session, status),
+    CONSTRAINT fk_class_rep_student
+        FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_class_rep_department
+        FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+    CONSTRAINT fk_class_rep_reviewer
+        FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE queries(

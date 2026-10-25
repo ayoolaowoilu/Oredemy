@@ -51,7 +51,7 @@ Tokens expire after one hour. Registration only accepts the `student` and `lectu
 }
 ```
 
-`role` is optional and defaults to `student`. Passwords must be at least six characters and contain a letter and a number. Returns `201`:
+`role` is optional and defaults to `student`. Passwords must be at least six characters and contain a letter and a number. Lecturer registrations start unverified and cannot access lecturer complaint or class-representative review features until an admin verifies them. Returns `201`:
 
 ```json
 {
@@ -60,7 +60,8 @@ Tokens expire after one hour. Registration only accepts the `student` and `lectu
     "id": "<uuid>",
     "name": "Example Learner",
     "email": "learner@example.com",
-    "role": "student"
+    "role": "student",
+    "is_verified": true
   },
   "message": "Registration Successful"
 }
@@ -135,14 +136,14 @@ Returns `201` with `{ "id": 123, "message": "Query submitted" }`.
 
 `GET /api/fetch/questions` — authenticated lecturer.
 
-Questions are scoped to the lecturer's own department or faculty assignment; the client cannot request another department or faculty by ID. `session` is required. `scope` defaults to `department`; use `faculty` to include questions from all departments assigned to the lecturer's faculty. Pagination defaults to page `1` and limit `20`, with a maximum limit of `100`. `query_type` can optionally filter the returned page and counts.
+Questions are scoped to the lecturer's own department or faculty assignment; the client cannot request another department or faculty by ID. `session` is required. `scope` defaults to `department`; use `faculty` to include questions from all departments assigned to the lecturer's faculty. Pagination defaults to page `1` and limit `20`, with a maximum limit of `100`. `query_type` can be repeated or supplied as a comma-separated list to filter the complaint page to one or more types. Optional inclusive `from` and `to` dates use `YYYY-MM-DD` and filter both the complaint list and counts. The most recent complaints are returned first.
 
 ```http
-GET /api/fetch/questions?session=2025%2F2026&scope=faculty&page=1&limit=20
+GET /api/fetch/questions?session=2025%2F2026&scope=faculty&query_type=Results%2COther&from=2026-10-01&to=2026-10-25&page=1&limit=20
 x-token: <LECTURER_JWT>
 ```
 
-Response includes the question page, pagination metadata, counts by query category (`Results`, `Facilities`, `Timetable`, `Other`), and counts by department for the requested session/scope. These dashboard counts remain session/scope totals when `query_type` is used to filter the question page. Category counts are called `bySection` in the response.
+Response includes the filtered question page, pagination metadata, counts by every query category (`Results`, `Facilities`, `Timetable`, `Other`), and counts by department. Counts respect the selected session, scope, and date range, but do not change when `query_type` filters the complaint page. Category counts are called `bySection` in the response.
 
 ```json
 {
@@ -216,6 +217,30 @@ Only `subject` and `query` can be changed:
 }
 ```
 
+## Lecturer verification
+
+Lecturer registrations have `is_verified: false` until an administrator approves them. Unverified lecturers cannot fetch complaints or view/review class-representative requests.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/admin/lecturers/pending` | List lecturer accounts awaiting verification |
+| `PATCH` | `/api/admin/lecturers/:id/verification` | Verify or revoke verification |
+
+The verification request body is `{ "is_verified": true }` (or `false` to revoke access). Both routes require an admin token.
+
+## Class representative requests
+
+Students submit a request for their own assigned department and session; those values are taken from their account and cannot be chosen in the request. A request cannot be submitted if the student has an existing pending request or is already approved for that session. Only a verified lecturer assigned to that department can review it. One approved class representative is allowed per department and session.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/class-rep/requests` | Submit a student request; optional body `{ "message": "..." }` |
+| `GET` | `/api/class-rep/requests/mine` | Student checks their request status/history |
+| `GET` | `/api/class-rep/requests` | List pending requests for the verified lecturer's department |
+| `PATCH` | `/api/class-rep/requests/:id` | Lecturer approves/rejects with `{ "status": "approved" }` or `{ "status": "rejected", "note": "..." }` |
+
+Successful submissions return `201` with the new request in `data`. Lecturer reviews return `{ "message": "Class-representative request approved" }` or the corresponding rejection message.
+
 ## Administrator routes
 
 All admin routes require a valid token for an account whose database role is `admin`. They manage the tables defined in `data.sql`; IDs are auto-incrementing integers. Collection responses use `{ "data": [...] }`, and create/update responses use `{ "data": {...} }`.
@@ -260,7 +285,34 @@ To provision an administrator, create or promote a trusted account through a sec
 - `faculties`: school foreign key and cascading deletion with its school.
 - `departments`: faculty foreign key and cascading deletion with its faculty.
 - `users`: UUID ID, profile/authentication data, optional faculty/department assignments, session, and `student`/`lecturer`/`admin` role.
+- `class_rep_requests`: student requests tied to a department and session, with lecturer reviewer and status.
 - `queries`: query subject/body/type/audience, session, owner, and creation timestamp.
+
+For an existing database, apply these changes before starting the updated API:
+
+```sql
+ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE users SET is_verified = TRUE WHERE role IN ('student', 'admin');
+
+CREATE TABLE class_rep_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id VARCHAR(36) NOT NULL,
+    department_id INT NOT NULL,
+    session VARCHAR(50) NOT NULL,
+    message VARCHAR(1000) NULL,
+    status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+    reviewed_by VARCHAR(36) NULL,
+    decision_note VARCHAR(1000) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMP NULL,
+    INDEX idx_class_rep_department_session_status (department_id, session, status),
+    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+);
+```
+
+Existing lecturer accounts remain unverified until an admin explicitly approves them.
 
 ## Errors
 

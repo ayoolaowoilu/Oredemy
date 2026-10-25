@@ -4,6 +4,7 @@ import editRoutes from "./src/modules/edit/edit.routes.js";
 import  queryRoutes  from "./src/modules/queries/queries.routes.js";
 import adminRoutes from "./src/modules/admin/admin.routes.js";
 import fetchRoutes from "./src/modules/fetch/fetch.routes.js";
+import classRepRoutes from "./src/modules/class-rep/class-rep.routes.js";
 const app = express();
 
 app.use(express.json());
@@ -12,6 +13,7 @@ app.use("/api/edit",editRoutes);
 app.use("/api/query",queryRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/fetch", fetchRoutes);
+app.use("/api/class-rep", classRepRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Server is running" });
