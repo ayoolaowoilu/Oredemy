@@ -104,6 +104,8 @@ const response = await fetch("http://localhost:8081/api/query/add", {
 
 To use the custom token header with `fetch`, change the `Authorization` line to `"x-token": token`.
 
+Before submitting a question, make sure the signed-in user has both `faculty_id` and `department_id` set on their profile. Otherwise, `POST /api/query/add` returns `400`.
+
 **In Axios**
 
 Pass headers in the third argument for a POST (or in the second argument for a GET):
@@ -180,7 +182,7 @@ The memory cache resets on restart and is not shared between API instances. Redi
 | `POST` | `/api/auth/login` | Public | Log in and receive a JWT |
 | `GET` | `/api/auth/userdata` | Any signed-in user | Get the current user's profile |
 | `POST` | `/api/edit/user` | Any signed-in user | Edit own profile; students can update academic details |
-| `POST` | `/api/query/add` | Any signed-in user | Submit a complaint; student questions also enter the support chat |
+| `POST` | `/api/query/add` | Signed-in user with faculty and department set | Submit a complaint; student questions also enter the support chat |
 | `DELETE` | `/api/query/delete` | Any signed-in user | Delete own complaint |
 | `POST` | `/api/edit/query` | Any signed-in user | Edit own complaint |
 | `GET` | `/api/fetch/academic-structure` | Public | Fetch schools, faculties, and departments for profile selections |
@@ -350,7 +352,7 @@ const departments = selectedFaculty?.departments ?? [];
 
 ### Submit a complaint
 
-`POST /api/query/add` — requires authentication. The API takes the complainant's user ID from the JWT. Returns `201`.
+`POST /api/query/add` — requires authentication and the signed-in user must have both a faculty and department set in their profile. If either is missing, the API returns `400`; update the profile using [`POST /api/edit/user`](#edit-your-profile) first. The API takes the complainant's user ID from the JWT. Returns `201` on success.
 
 | Body field | Required | Type | Notes |
 | --- | --- | --- | --- |

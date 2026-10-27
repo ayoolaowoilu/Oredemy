@@ -9,9 +9,18 @@ export async function SubmitQuery(queryData, userId) {
     try {
         await connection.beginTransaction();
         const [userRows] = await connection.query(
-            "SELECT role FROM users WHERE id = ? FOR UPDATE",
+            "SELECT role, faculty_id, department_id FROM users WHERE id = ? FOR UPDATE",
             [userId]
         );
+        const user = userRows[0];
+        if (!user?.faculty_id || !user?.department_id) {
+            const error = new Error(
+                "Set your faculty and department in your profile before submitting a question"
+            );
+            error.statusCode = 400;
+            throw error;
+        }
+
         const [result] = await connection.query(
             `INSERT INTO queries (user_id, query_for, session, query, query_type, subject)
              VALUES (?, ?, ?, ?, ?, ?)`,
@@ -26,7 +35,7 @@ export async function SubmitQuery(queryData, userId) {
         );
 
         let chatConversationId;
-        if (userRows[0]?.role === "student") {
+        if (user.role === "student") {
             chatConversationId = await FindOrCreateSupportConversation(connection, userId);
             await connection.query(
                 `INSERT INTO chat_messages (conversation_id, sender_id, query_id, body)
