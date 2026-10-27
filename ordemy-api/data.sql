@@ -105,17 +105,22 @@ CREATE TABLE queries(
 
 CREATE TABLE chat_conversations (
     id VARCHAR(36) PRIMARY KEY,
-    type ENUM('support', 'lecturer') NOT NULL,
-    student_id VARCHAR(36) NOT NULL,
+    type ENUM('support', 'lecturer', 'class') NOT NULL,
+    student_id VARCHAR(36) NULL,
     lecturer_id VARCHAR(36) NULL,
+    class_department_id INT NULL,
+    class_session VARCHAR(50) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_chat_conversations_student (student_id, updated_at),
     INDEX idx_chat_conversations_lecturer (lecturer_id, updated_at),
+    UNIQUE KEY uq_chat_conversations_class (type, class_department_id, class_session),
     CONSTRAINT fk_chat_conversations_student
         FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_chat_conversations_lecturer
-        FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_chat_conversations_class_department
+        FOREIGN KEY (class_department_id) REFERENCES departments(id) ON DELETE CASCADE
 );
 
 CREATE TABLE chat_messages (

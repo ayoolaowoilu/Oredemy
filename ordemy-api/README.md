@@ -185,7 +185,7 @@ The memory cache resets on restart and is not shared between API instances. Redi
 | `POST` | `/api/edit/query` | Any signed-in user | Edit own complaint |
 | `GET` | `/api/fetch/questions` | Verified lecturer | Get recent complaints, filters, and counts |
 | `GET` | `/api/chat/conversations` | Student, verified lecturer, or admin | List conversations available to the signed-in user |
-| `POST` | `/api/chat/conversations` | Student | Open or retrieve a support or matched lecturer conversation |
+| `POST` | `/api/chat/conversations` | Student | Open or retrieve a support, class-group, or matched lecturer conversation |
 | `GET` | `/api/chat/conversations/:id/messages` | Conversation participant or admin support | Read conversation messages |
 | `POST` | `/api/chat/conversations/:id/messages` | Conversation participant or admin support | Send a chat message |
 | `POST` | `/api/class-rep/requests` | Signed-in student | Request class-rep status |
@@ -324,50 +324,153 @@ Non-student submissions retain the existing query behavior and do not create cha
 
 ## Chat
 
-Chat history and messages are stored in MySQL. Students can chat with a verified lecturer automatically matched from their department; if none is assigned there, the API tries a verified lecturer in the student's faculty. A student must have a department or faculty set. A student can also open a private customer-support conversation. Admin accounts handle these support conversations; lecturers cannot access them. Student-to-student conversations are not allowed.
+Chat history and messages are stored in MySQL. There are three conversation types:
+
+| Type | Who can use it | How it works |
+| --- | --- | --- |
+| `support` | The student who opened it and admins | A private student-to-customer-support thread. Student questions submitted through `/api/query/add` are also added here. |
+| `lecturer` | The student and their matched verified lecturer | A private one-to-one thread. The API matches a lecturer in the student's department first, then tries the student's faculty. |
+| `class` | Students in the same department and academic session, and verified lecturers assigned to that department | One shared group for a department/session. The API checks current class membership when listing chats, reading history, joining the socket room, and sending messages. |
+
+Students must have a department and academic session set to join a class group. Student-to-student messages are allowed only in this shared class group; students cannot create private chats with other students. An admin can manage the customer-support inbox but is not automatically a member of class or lecturer conversations. The client never chooses a conversation member or class ID: the API derives membership from the authenticated account.
 
 ### Open a conversation
 
-`POST /api/chat/conversations` — requires authentication as a student. Send `{ "type": "support" }` to open the student's support thread or `{ "type": "lecturer" }` to open a conversation with the matched lecturer. Repeated requests return the existing conversation when one exists.
+`POST /api/chat/conversations` — requires authentication as a student. Send `{ "type": "support" }` to open the student's support thread, `{ "type": "lecturer" }` to open a conversation with the matched lecturer, or `{ "type": "class" }` to open the shared group for the student's department/session. Repeated requests return the existing conversation when one exists.
 
 ```json
-{ "type": "lecturer" }
+{ "type": "class" }
 ```
 
-Response: `{ "data": { "id": "...", "type": "lecturer", "student_id": "...", "lecturer_id": "...", "created_at": "...", "updated_at": "..." } }`.
+Response: `{ "data": { "id": "...", "type": "class", "class_department_id": 12, "class_session": "2025/2026", "created_at": "...", "updated_at": "..." } }`. A lecturer conversation also includes `student_id` and `lecturer_id`; a support conversation includes its `student_id`.
 
 ### List conversations
 
-`GET /api/chat/conversations` — requires authentication. Students see their own conversations, verified lecturers see their lecturer conversations, and admins see the customer-support inbox.
+`GET /api/chat/conversations` — requires authentication. Students see their own support/lecturer conversations and their current class group. Verified lecturers see their assigned one-to-one conversations and class groups for their department. Admins see the customer-support inbox. Each item includes its `id`, `type`, `last_message`, and `last_message_at` (the last two are `null` for an empty conversation).
 
 ### Read messages
 
-`GET /api/chat/conversations/:id/messages?limit=50&before=123` — requires access to the conversation. `limit` is optional (default `50`, maximum `100`); `before` is an optional message ID for fetching older messages. The response is `{ "data": [...] }`, ordered oldest to newest.
+`GET /api/chat/conversations/:id/messages?limit=50&before=123` — requires access to the conversation. `limit` is optional (default `50`, maximum `100`); `before` is an optional message ID for fetching older messages. The response is `{ "data": [...] }`, ordered oldest to newest. To fetch the next older page, set `before` to the smallest `id` in the page already loaded.
 
 ### Send a message over REST
 
 `POST /api/chat/conversations/:id/messages` — requires access to the conversation. Send a non-empty `body` of up to 5000 characters; the response is `{ "data": { ...message } }`.
 
+### Frontend walkthrough
+
+1. **Sign in and keep the token.** Call the existing register/login endpoint and keep the returned `token` in the same secure place as the rest of the app's auth state. Do not put it in a URL.
+2. **Load chat navigation.** Request `GET /api/chat/conversations` with the JWT. Render each row by `type` (support, lecturer, or class). Students can show a “Class group” button even before there is a conversation; they can open it with the next step.
+3. **Open or join a chat.** For a student, send `POST /api/chat/conversations` with `{ "type": "class" }`, `{ "type": "lecturer" }`, or `{ "type": "support" }`. Use the returned `data.id` as the conversation ID. A lecturer/admin selects an ID from their conversation list instead. If opening a lecturer chat returns `404`, no verified lecturer is assigned in that department/faculty yet; if opening a class chat returns `400`, the student's department/session has not been assigned.
+4. **Join live updates and load previous messages.** Connect to Socket.IO, subscribe to `chat:message`, and wait for the `chat:join` acknowledgement. Then request `GET /api/chat/conversations/{id}/messages?limit=50` with the JWT and merge the history with any live events, deduplicating by message `id`. Joining first avoids missing messages sent while history is loading. Older pages use the `before` cursor described above.
+5. **Send and append messages.** Send the message through the Socket.IO event below. Append the server's `chat:message` event to the current thread. The server persists a message before broadcasting it; do not treat a client-side optimistic message as confirmed until the acknowledgement or broadcast arrives. REST `POST /api/chat/conversations/{id}/messages` is also available if realtime sending is not desired.
+6. **Clean up when changing screens.** Leave the old conversation, remove event listeners, and disconnect the socket when the user signs out. Reconnect with the current JWT after reconnect/sign-in and rejoin the currently open conversation. If a chat request returns `401`, refresh the app's signed-in state; `403` means that account is not a member of the conversation.
+
+Example REST helper for browser clients:
+
+```ts
+const apiBase = "http://localhost:8081";
+const token = loginResponse.token;
+
+async function chatRequest<T>(path: string, token: string, options: RequestInit = {}): Promise<T> {
+  const headers = new Headers(options.headers);
+  headers.set("Authorization", `Bearer ${token}`);
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  const response = await fetch(`${apiBase}${path}`, {
+    ...options,
+    headers,
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.message ?? "Chat request failed");
+  return result as T;
+}
+
+const conversations = await chatRequest<{ data: ChatConversation[] }>(
+  "/api/chat/conversations",
+  token,
+);
+const { data: classChat } = await chatRequest<{ data: ChatConversation }>(
+  "/api/chat/conversations",
+  token,
+  { method: "POST", body: JSON.stringify({ type: "class" }) },
+);
+```
+
+Import the `ChatConversation` and `ChatMessage` types from [`types.ts`](./types.ts) in the frontend project (or copy the matching interface definitions into the frontend). The snippets assume the frontend has installed `socket.io-client`; the backend's `socket.io` dependency does not install the frontend client.
+
 ### Realtime Socket.IO
 
-`server.js` serves Socket.IO on the same host and port as the HTTP API. Install `socket.io-client` in the frontend and pass the JWT in the Socket.IO `auth` payload:
+`server.js` serves Socket.IO on the same host and port as the HTTP API. Install the client library in the frontend with `npm install socket.io-client`, then pass the JWT in the Socket.IO `auth` payload:
 
 ```ts
+import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
+import type { ChatMessage } from "./types";
 
-const socket = io("http://localhost:8081", { auth: { token } });
+// Inside the chat screen component; token and classChat come from auth/API state.
+const [messages, setMessages] = useState<ChatMessage[]>([]);
+useEffect(() => {
+  let active = true;
+  const socket = io("http://localhost:8081", { auth: { token } });
+  setMessages([]);
+  const mergeMessages = (current: ChatMessage[], incoming: ChatMessage[]) => {
+    const byId = new Map(current.map((message) => [message.id, message]));
+    for (const message of incoming) byId.set(message.id, message);
+    return [...byId.values()].sort((a, b) => a.id - b.id);
+  };
+  const handleMessage = (message: ChatMessage) => {
+    if (message.conversation_id === classChat.id) {
+      setMessages((current) => mergeMessages(current, [message]));
+    }
+  };
+
+  socket.on("chat:message", handleMessage);
+  socket.emit("chat:join", { conversationId: classChat.id }, async (result) => {
+    if (!result.ok) {
+      console.error(result.error?.message ?? "Could not join chat");
+      return;
+    }
+    try {
+      const history = await chatRequest<{ data: ChatMessage[] }>(
+        `/api/chat/conversations/${classChat.id}/messages?limit=50`,
+        token,
+      );
+      if (active) setMessages((current) => mergeMessages(current, history.data));
+    } catch (error) {
+      console.error("Could not load chat history", error);
+    }
+  });
+
+  return () => {
+    active = false;
+    socket.off("chat:message", handleMessage);
+    socket.disconnect();
+  };
+}, [classChat.id, token]);
 ```
 
-After connecting, join only a conversation returned by the API. Acknowledge callbacks receive `{ ok: true, data }` on success or `{ ok: false, error: { message } }` on failure:
+After joining, send messages in the same socket session. Acknowledge callbacks receive `{ ok: true, data }` on success or `{ ok: false, error: { message } }` on failure. `chat:message` broadcasts contain the saved message, including its server-assigned `id`, sender, body, and timestamp. The sender receives both the broadcast and acknowledgement; deduplicate both by message `id`.
 
 ```ts
-socket.emit("chat:join", { conversationId }, (result) => console.log(result));
-socket.emit("chat:message", { conversationId, body: "Hello" }, (result) => console.log(result));
-socket.on("chat:message", (message) => console.log(message));
-socket.emit("chat:leave", { conversationId });
+socket.emit(
+  "chat:message",
+  { conversationId: classChat.id, body: "Hello, class!" },
+  (result) => {
+    if (!result.ok) console.error(result.error.message);
+  },
+);
 ```
 
-The server validates the JWT and conversation access before joining rooms or storing messages. Set `CLIENT_ORIGIN` to a comma-separated list of allowed frontend origins; it defaults to `*` when unset. Message events are persisted before they are broadcast.
+If the frontend keeps one socket open while changing chats, leave the old room before joining the next one:
+
+```ts
+socket.emit("chat:leave", { conversationId: previousConversationId });
+```
+
+Disconnecting the socket when the chat screen closes also leaves its rooms.
+
+The server validates the JWT and current class/conversation membership before joining rooms or storing messages. Set `CLIENT_ORIGIN` to a comma-separated list of allowed frontend origins; it defaults to `*` when unset. Message events are persisted before they are broadcast. For environments where the browser cannot use websockets, Socket.IO can fall back to HTTP long-polling; the REST history/send endpoints remain available.
 
 ### Edit your complaint
 
@@ -646,15 +749,19 @@ CREATE INDEX idx_queries_session_type_created
 
 CREATE TABLE chat_conversations (
     id VARCHAR(36) PRIMARY KEY,
-    type ENUM('support', 'lecturer') NOT NULL,
-    student_id VARCHAR(36) NOT NULL,
+    type ENUM('support', 'lecturer', 'class') NOT NULL,
+    student_id VARCHAR(36) NULL,
     lecturer_id VARCHAR(36) NULL,
+    class_department_id INT NULL,
+    class_session VARCHAR(50) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_chat_conversations_student (student_id, updated_at),
     INDEX idx_chat_conversations_lecturer (lecturer_id, updated_at),
+    UNIQUE KEY uq_chat_conversations_class (type, class_department_id, class_session),
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_department_id) REFERENCES departments(id) ON DELETE CASCADE
 );
 
 CREATE TABLE chat_messages (
@@ -671,6 +778,21 @@ CREATE TABLE chat_messages (
     FOREIGN KEY (query_id) REFERENCES queries(id) ON DELETE SET NULL
 );
 ```
+
+If you already created the chat tables using the earlier chat migration (where `chat_conversations.type` allowed only `support` and `lecturer`), keep the existing tables and run this one-time upgrade instead of running the `CREATE TABLE chat_conversations` / `CREATE TABLE chat_messages` statements again:
+
+```sql
+ALTER TABLE chat_conversations
+    MODIFY COLUMN type ENUM('support', 'lecturer', 'class') NOT NULL,
+    MODIFY COLUMN student_id VARCHAR(36) NULL,
+    ADD COLUMN class_department_id INT NULL,
+    ADD COLUMN class_session VARCHAR(50) NULL,
+    ADD UNIQUE KEY uq_chat_conversations_class (type, class_department_id, class_session),
+    ADD CONSTRAINT fk_chat_conversations_class_department
+        FOREIGN KEY (class_department_id) REFERENCES departments(id) ON DELETE CASCADE;
+```
+
+This class-chat upgrade uses department plus academic session as the class identity. Existing support and lecturer conversations remain unchanged.
 
 Existing lecturer accounts remain unverified until an admin explicitly approves them. Keep database credentials and JWT secrets out of frontend code and source control.
 

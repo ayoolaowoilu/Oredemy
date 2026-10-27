@@ -89,15 +89,18 @@ export interface AddQueryResponse {
     message: string;
 }
 
-export type ChatConversationType = "support" | "lecturer";
+export type ChatConversationType = "support" | "lecturer" | "class";
 
 export interface ChatConversation {
     id: string;
     type: ChatConversationType;
-    student_id: string;
+    student_id: string | null;
     lecturer_id: string | null;
+    class_department_id?: number | null;
+    class_session?: string | null;
     student_name?: string;
     lecturer_name?: string | null;
+    class_department?: string | null;
     created_at: string;
     updated_at: string;
     last_message?: string | null;
