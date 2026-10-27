@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 
 
 export async function RegisterUser(userData) {
-    await RegistrationSchema(userData);
+     RegistrationSchema(userData);
     const password = await HashPassword(userData.password);
     const id = uuidv4();
     const role = userData.role ?? "student";
@@ -66,6 +66,7 @@ export async function GetUserData(userId) {
     const [rows] = await pool.query(
         `SELECT users.id, users.name, users.email, users.role,
                 users.is_verified, users.session,
+                users.faculty_id, users.department_id,
                 faculties.name AS faculty, departments.name AS department,
                 users.created_at
          FROM users

@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 
 function generateToken(payload) {
-  const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "1h" });
+  const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "30d" });
   return token;
 }
 
@@ -14,4 +14,4 @@ function verifyToken(token) {
   }
 }
 
-export { generateToken, verifyToken };
+export { generateToken, verifyToken }; 

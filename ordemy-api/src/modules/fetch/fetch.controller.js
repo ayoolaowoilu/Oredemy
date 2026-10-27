@@ -1,4 +1,9 @@
-import { FetchLecturerQuestions } from "./fetch.services.js";
+import { FetchAcademicStructure, FetchLecturerQuestions } from "./fetch.services.js";
+
+export async function fetchAcademicStructure(req, res) {
+    const data = await FetchAcademicStructure();
+    return res.status(200).json(data);
+}
 
 export async function fetchLecturerQuestions(req, res) {
     const data = await FetchLecturerQuestions(req.query, req.authUser.id);

@@ -4,6 +4,42 @@ import { ValidateQuestionFetch } from "./fetch.validation.js";
 
 const QUERY_TYPES = ["Results", "Facilities", "Timetable", "Other"];
 
+export async function FetchAcademicStructure() {
+    const [rows] = await pool.query(
+        `SELECT schools.id AS school_id, schools.name AS school_name,
+                faculties.id AS faculty_id, faculties.name AS faculty_name,
+                departments.id AS department_id, departments.name AS department_name
+         FROM schools
+         LEFT JOIN faculties ON faculties.school_id = schools.id
+         LEFT JOIN departments ON departments.faculty_id = faculties.id
+         ORDER BY schools.name, faculties.name, departments.name`
+    );
+
+    const schools = new Map();
+    for (const row of rows) {
+        let school = schools.get(row.school_id);
+        if (!school) {
+            school = { id: row.school_id, name: row.school_name, faculties: [] };
+            schools.set(row.school_id, school);
+        }
+        if (row.faculty_id === null) continue;
+
+        let faculty = school.faculties.find((item) => item.id === row.faculty_id);
+        if (!faculty) {
+            faculty = { id: row.faculty_id, name: row.faculty_name, departments: [] };
+            school.faculties.push(faculty);
+        }
+        if (row.department_id !== null) {
+            faculty.departments.push({
+                id: row.department_id,
+                name: row.department_name,
+            });
+        }
+    }
+
+    return { data: [...schools.values()] };
+}
+
 export async function FetchLecturerQuestions(query, lecturerId) {
     const { session, scope, page, limit, queryTypes, from, to } = ValidateQuestionFetch(query);
     const [lecturers] = await pool.query(

@@ -28,7 +28,13 @@ function verifyChanges(editData, allowedColumns) {
 }
 
 export function UserEditValidation(editData) {
-    const columns = verifyChanges(editData, ["name", "image"]);
+    const columns = verifyChanges(editData, [
+        "name",
+        "image",
+        "session",
+        "faculty_id",
+        "department_id",
+    ]);
     if (
         "name" in editData.values &&
         (typeof editData.values.name !== "string" ||
@@ -39,6 +45,25 @@ export function UserEditValidation(editData) {
     }
     if ("image" in editData.values && editData.values.image !== null && typeof editData.values.image !== "string") {
         throw new HttpError(400, "image must be a string or null");
+    }
+    if (
+        "session" in editData.values &&
+        editData.values.session !== null &&
+        (typeof editData.values.session !== "string" ||
+            !editData.values.session.trim() ||
+            editData.values.session.length > 50)
+    ) {
+        throw new HttpError(400, "session must be a non-empty string of at most 50 characters or null");
+    }
+    for (const field of ["faculty_id", "department_id"]) {
+        const value = editData.values[field];
+        if (
+            field in editData.values &&
+            value !== null &&
+            (!Number.isSafeInteger(value) || value <= 0)
+        ) {
+            throw new HttpError(400, `${field} must be a positive integer or null`);
+        }
     }
     return columns;
 }

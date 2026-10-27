@@ -49,6 +49,8 @@ export interface LoginRequest {
 
 export interface UserProfile extends AuthUser {
     session: string | null;
+    faculty_id: number | null;
+    department_id: number | null;
     faculty: string | null;
     department: string | null;
     created_at: string;
@@ -57,7 +59,12 @@ export interface UserProfile extends AuthUser {
 export interface EditUserRequest {
     editData: {
         change: string;
-        values: Partial<Pick<AuthUser, "name">> & { image?: string | null };
+        values: Partial<Pick<AuthUser, "name">> & {
+            image?: string | null;
+            session?: string | null;
+            faculty_id?: number | null;
+            department_id?: number | null;
+        };
     };
 }
 
@@ -255,6 +262,12 @@ export interface Department {
     name: string;
     faculty_id: number;
     created_at: string;
+}
+
+export interface AcademicStructureSchool {
+    id: number;
+    name: string;
+    faculties: Array<Faculty & { departments: Department[] }>;
 }
 
 export interface CreateSchoolRequest {

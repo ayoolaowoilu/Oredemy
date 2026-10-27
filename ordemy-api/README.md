@@ -179,10 +179,11 @@ The memory cache resets on restart and is not shared between API instances. Redi
 | `POST` | `/api/auth/register` | Public | Create a student or lecturer account |
 | `POST` | `/api/auth/login` | Public | Log in and receive a JWT |
 | `GET` | `/api/auth/userdata` | Any signed-in user | Get the current user's profile |
-| `POST` | `/api/edit/user` | Any signed-in user | Edit own name or image |
+| `POST` | `/api/edit/user` | Any signed-in user | Edit own profile; students can update academic details |
 | `POST` | `/api/query/add` | Any signed-in user | Submit a complaint; student questions also enter the support chat |
 | `DELETE` | `/api/query/delete` | Any signed-in user | Delete own complaint |
 | `POST` | `/api/edit/query` | Any signed-in user | Edit own complaint |
+| `GET` | `/api/fetch/academic-structure` | Any signed-in user | Fetch schools, faculties, and departments for profile selections |
 | `GET` | `/api/fetch/questions` | Verified lecturer | Get recent complaints, filters, and counts |
 | `GET` | `/api/chat/conversations` | Student, verified lecturer, or admin | List conversations available to the signed-in user |
 | `POST` | `/api/chat/conversations` | Student | Open or retrieve a support, class-group, or matched lecturer conversation |
@@ -257,7 +258,7 @@ Response has the same `token` and `user` shape as register. Invalid credentials 
 
 `GET /api/auth/userdata` — requires authentication. No path, query, or body parameters. Returns `200`.
 
-Response fields: `id`, `name`, `email`, `role`, `is_verified`, `session`, `faculty`, `department`, `created_at`. `session`, `faculty`, and `department` can be `null`.
+Response fields: `id`, `name`, `email`, `role`, `is_verified`, `session`, `faculty_id`, `department_id`, `faculty`, `department`, `created_at`. Academic IDs, session, faculty, and department can be `null`.
 
 ## Profile and complaint endpoints
 
@@ -267,10 +268,13 @@ Response fields: `id`, `name`, `email`, `role`, `is_verified`, `session`, `facul
 
 | Body field | Required | Type | Notes |
 | --- | --- | --- | --- |
-| `editData.change` | Yes | string | Comma-separated list containing only `name` and/or `image` |
+| `editData.change` | Yes | string | Comma-separated list containing `name`, `image`, `session`, `faculty_id`, and/or `department_id` |
 | `editData.values` | Yes | object | Must contain exactly the fields listed in `change` |
 | `editData.values.name` | If changing name | string | Non-empty, at most 255 characters |
 | `editData.values.image` | If changing image | string or `null` | Image URL/string, or `null` to clear |
+| `editData.values.session` | If changing session | string or `null` | Non-empty, at most 50 characters, or `null` to clear; students only |
+| `editData.values.faculty_id` | If changing faculty | positive integer or `null` | Must identify an existing faculty; students only |
+| `editData.values.department_id` | If changing department | positive integer or `null` | Must identify an existing department; students only |
 
 ```json
 {
@@ -285,6 +289,62 @@ Response fields: `id`, `name`, `email`, `role`, `is_verified`, `session`, `facul
 ```
 
 Example response: `{ "message": "Made changes to: name,image" }`.
+
+The API validates that the department and faculty exist and belong together. If a student changes only `department_id`, the matching `faculty_id` is set automatically. To clear a department while keeping the faculty, send `department_id: null`; to clear a faculty while a department is selected, first clear/change the department too. Only students can change their academic session, faculty, or department; lecturer assignments remain managed by an administrator.
+
+Example: update a student's faculty, department, and academic session:
+
+```json
+{
+  "editData": {
+    "change": "faculty_id,department_id,session",
+    "values": {
+      "faculty_id": 2,
+      "department_id": 7,
+      "session": "2025/2026"
+    }
+  }
+}
+```
+
+### Fetch faculties and departments for profile forms
+
+`GET /api/fetch/academic-structure` — requires authentication. Returns all schools, nested faculties, and each faculty's departments. Use the IDs from this response in the profile edit request; when the user changes faculty, show only departments belonging to that faculty.
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Example University",
+      "faculties": [
+        {
+          "id": 2,
+          "name": "Science",
+          "departments": [
+            { "id": 7, "name": "Computer Science" }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Example frontend flow:
+
+```ts
+const { data: schools } = await apiRequest<{ data: AcademicStructureSchool[] }>(
+  "/api/fetch/academic-structure",
+  token,
+);
+const selectedFaculty = schools
+  .flatMap((school) => school.faculties)
+  .find((faculty) => faculty.id === facultyId);
+const departments = selectedFaculty?.departments ?? [];
+```
+
+`apiRequest` should send the JWT in the `Authorization: Bearer <token>` header, as shown in the [frontend request examples](#where-to-put-request-headers). `AcademicStructureSchool` is defined in [`types.ts`](./types.ts).
 
 ### Submit a complaint
 
