@@ -1,25 +1,61 @@
 import pool from "../../config/database.js";
+import { FindOrCreateSupportConversation } from "../chat/chat.services.js";
 import { ValidateDeleteQuery, ValidateQuery } from "./queries.validation.js";
 
 
 export async function SubmitQuery(queryData, userId) {
     ValidateQuery(queryData);
-    const [result] = await pool.query(
-        `INSERT INTO queries (user_id, query_for, session, query, query_type, subject)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-            userId,
-            queryData.query_for ?? "Department",
-            queryData.session,
-            queryData.query,
-            queryData.query_type ?? "Other",
-            queryData.subject,
-        ]
-    );
-    return {
-        id: result.insertId,
-        message: "Query submitted",
-    };
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [userRows] = await connection.query(
+            "SELECT role FROM users WHERE id = ? FOR UPDATE",
+            [userId]
+        );
+        const [result] = await connection.query(
+            `INSERT INTO queries (user_id, query_for, session, query, query_type, subject)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+                userId,
+                queryData.query_for ?? "Department",
+                queryData.session,
+                queryData.query,
+                queryData.query_type ?? "Other",
+                queryData.subject,
+            ]
+        );
+
+        let chatConversationId;
+        if (userRows[0]?.role === "student") {
+            chatConversationId = await FindOrCreateSupportConversation(connection, userId);
+            await connection.query(
+                `INSERT INTO chat_messages (conversation_id, sender_id, query_id, body)
+                 VALUES (?, ?, ?, ?)`,
+                [
+                    chatConversationId,
+                    userId,
+                    result.insertId,
+                    `Question: ${queryData.subject}\n\n${queryData.query}`,
+                ]
+            );
+            await connection.query(
+                "UPDATE chat_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                [chatConversationId]
+            );
+        }
+
+        await connection.commit();
+        return {
+            id: result.insertId,
+            ...(chatConversationId ? { chat_conversation_id: chatConversationId } : {}),
+            message: "Query submitted",
+        };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 }
 
 export async function DeleteQuery(userId, queryId) {

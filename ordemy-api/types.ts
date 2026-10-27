@@ -85,7 +85,39 @@ export interface DeleteQueryRequest {
 
 export interface AddQueryResponse {
     id: number;
+    chat_conversation_id?: string;
     message: string;
+}
+
+export type ChatConversationType = "support" | "lecturer";
+
+export interface ChatConversation {
+    id: string;
+    type: ChatConversationType;
+    student_id: string;
+    lecturer_id: string | null;
+    student_name?: string;
+    lecturer_name?: string | null;
+    created_at: string;
+    updated_at: string;
+    last_message?: string | null;
+    last_message_at?: string | null;
+}
+
+export interface ChatMessage {
+    id: number;
+    conversation_id: string;
+    sender_id: string;
+    sender_name: string;
+    query_id: number | null;
+    body: string;
+    created_at: string;
+}
+
+export interface ChatSocketResult<T> {
+    ok: boolean;
+    data?: T;
+    error?: ApiError;
 }
 
 export interface QueryRecord {

@@ -180,10 +180,14 @@ The memory cache resets on restart and is not shared between API instances. Redi
 | `POST` | `/api/auth/login` | Public | Log in and receive a JWT |
 | `GET` | `/api/auth/userdata` | Any signed-in user | Get the current user's profile |
 | `POST` | `/api/edit/user` | Any signed-in user | Edit own name or image |
-| `POST` | `/api/query/add` | Any signed-in user | Submit a complaint |
+| `POST` | `/api/query/add` | Any signed-in user | Submit a complaint; student questions also enter the support chat |
 | `DELETE` | `/api/query/delete` | Any signed-in user | Delete own complaint |
 | `POST` | `/api/edit/query` | Any signed-in user | Edit own complaint |
 | `GET` | `/api/fetch/questions` | Verified lecturer | Get recent complaints, filters, and counts |
+| `GET` | `/api/chat/conversations` | Student, verified lecturer, or admin | List conversations available to the signed-in user |
+| `POST` | `/api/chat/conversations` | Student | Open or retrieve a support or matched lecturer conversation |
+| `GET` | `/api/chat/conversations/:id/messages` | Conversation participant or admin support | Read conversation messages |
+| `POST` | `/api/chat/conversations/:id/messages` | Conversation participant or admin support | Send a chat message |
 | `POST` | `/api/class-rep/requests` | Signed-in student | Request class-rep status |
 | `GET` | `/api/class-rep/requests/mine` | Signed-in user | Check own class-rep request history |
 | `GET` | `/api/class-rep/requests` | Verified lecturer | List pending requests in own department |
@@ -306,7 +310,64 @@ Example response: `{ "message": "Made changes to: name,image" }`.
 }
 ```
 
-Response: `{ "id": 123, "message": "Query submitted" }`.
+For student submissions, the question is also saved as the first/new message in that student's customer-support conversation in the same database transaction. The response includes that conversation ID:
+
+```json
+{
+  "id": 123,
+  "chat_conversation_id": "a1b2c3d4-e5f6-4789-8abc-123456789012",
+  "message": "Query submitted"
+}
+```
+
+Non-student submissions retain the existing query behavior and do not create chat messages.
+
+## Chat
+
+Chat history and messages are stored in MySQL. Students can chat with a verified lecturer automatically matched from their department; if none is assigned there, the API tries a verified lecturer in the student's faculty. A student must have a department or faculty set. A student can also open a private customer-support conversation. Admin accounts handle these support conversations; lecturers cannot access them. Student-to-student conversations are not allowed.
+
+### Open a conversation
+
+`POST /api/chat/conversations` — requires authentication as a student. Send `{ "type": "support" }` to open the student's support thread or `{ "type": "lecturer" }` to open a conversation with the matched lecturer. Repeated requests return the existing conversation when one exists.
+
+```json
+{ "type": "lecturer" }
+```
+
+Response: `{ "data": { "id": "...", "type": "lecturer", "student_id": "...", "lecturer_id": "...", "created_at": "...", "updated_at": "..." } }`.
+
+### List conversations
+
+`GET /api/chat/conversations` — requires authentication. Students see their own conversations, verified lecturers see their lecturer conversations, and admins see the customer-support inbox.
+
+### Read messages
+
+`GET /api/chat/conversations/:id/messages?limit=50&before=123` — requires access to the conversation. `limit` is optional (default `50`, maximum `100`); `before` is an optional message ID for fetching older messages. The response is `{ "data": [...] }`, ordered oldest to newest.
+
+### Send a message over REST
+
+`POST /api/chat/conversations/:id/messages` — requires access to the conversation. Send a non-empty `body` of up to 5000 characters; the response is `{ "data": { ...message } }`.
+
+### Realtime Socket.IO
+
+`server.js` serves Socket.IO on the same host and port as the HTTP API. Install `socket.io-client` in the frontend and pass the JWT in the Socket.IO `auth` payload:
+
+```ts
+import { io } from "socket.io-client";
+
+const socket = io("http://localhost:8081", { auth: { token } });
+```
+
+After connecting, join only a conversation returned by the API. Acknowledge callbacks receive `{ ok: true, data }` on success or `{ ok: false, error: { message } }` on failure:
+
+```ts
+socket.emit("chat:join", { conversationId }, (result) => console.log(result));
+socket.emit("chat:message", { conversationId, body: "Hello" }, (result) => console.log(result));
+socket.on("chat:message", (message) => console.log(message));
+socket.emit("chat:leave", { conversationId });
+```
+
+The server validates the JWT and conversation access before joining rooms or storing messages. Set `CLIENT_ORIGIN` to a comma-separated list of allowed frontend origins; it defaults to `*` when unset. Message events are persisted before they are broadcast.
 
 ### Edit your complaint
 
@@ -557,7 +618,7 @@ Error responses use `{ "message": "..." }`.
 
 ## Database setup
 
-`data.sql` creates the schema for a new database. For an existing database created before lecturer verification/class-rep requests were added, apply the migration before running the updated API:
+`data.sql` creates the schema for a new database. For an existing database created before lecturer verification/class-rep requests/chat were added, apply the applicable migration(s) before running the updated API:
 
 ```sql
 ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT FALSE;
@@ -582,6 +643,33 @@ CREATE TABLE class_rep_requests (
 
 CREATE INDEX idx_queries_session_type_created
     ON queries (session, query_type, created_at);
+
+CREATE TABLE chat_conversations (
+    id VARCHAR(36) PRIMARY KEY,
+    type ENUM('support', 'lecturer') NOT NULL,
+    student_id VARCHAR(36) NOT NULL,
+    lecturer_id VARCHAR(36) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_chat_conversations_student (student_id, updated_at),
+    INDEX idx_chat_conversations_lecturer (lecturer_id, updated_at),
+    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE chat_messages (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    conversation_id VARCHAR(36) NOT NULL,
+    sender_id VARCHAR(36) NOT NULL,
+    query_id INT NULL,
+    body MEDIUMTEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_chat_messages_conversation (conversation_id, id),
+    UNIQUE KEY uq_chat_messages_query (query_id),
+    FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (query_id) REFERENCES queries(id) ON DELETE SET NULL
+);
 ```
 
 Existing lecturer accounts remain unverified until an admin explicitly approves them. Keep database credentials and JWT secrets out of frontend code and source control.

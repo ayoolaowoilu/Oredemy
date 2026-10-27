@@ -102,3 +102,35 @@ CREATE TABLE queries(
      INDEX idx_queries_session_type_created (session, query_type, created_at),
      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE chat_conversations (
+    id VARCHAR(36) PRIMARY KEY,
+    type ENUM('support', 'lecturer') NOT NULL,
+    student_id VARCHAR(36) NOT NULL,
+    lecturer_id VARCHAR(36) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_chat_conversations_student (student_id, updated_at),
+    INDEX idx_chat_conversations_lecturer (lecturer_id, updated_at),
+    CONSTRAINT fk_chat_conversations_student
+        FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_chat_conversations_lecturer
+        FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE chat_messages (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    conversation_id VARCHAR(36) NOT NULL,
+    sender_id VARCHAR(36) NOT NULL,
+    query_id INT NULL,
+    body MEDIUMTEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_chat_messages_conversation (conversation_id, id),
+    UNIQUE KEY uq_chat_messages_query (query_id),
+    CONSTRAINT fk_chat_messages_conversation
+        FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    CONSTRAINT fk_chat_messages_sender
+        FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_chat_messages_query
+        FOREIGN KEY (query_id) REFERENCES queries(id) ON DELETE SET NULL
+);
