@@ -267,7 +267,18 @@ export interface Department {
 export interface AcademicStructureSchool {
     id: number;
     name: string;
-    faculties: Array<Faculty & { departments: Department[] }>;
+    faculties: AcademicStructureFaculty[];
+}
+
+export interface AcademicStructureFaculty {
+    id: number;
+    name: string;
+    departments: AcademicStructureDepartment[];
+}
+
+export interface AcademicStructureDepartment {
+    id: number;
+    name: string;
 }
 
 export interface CreateSchoolRequest {

@@ -5,7 +5,7 @@ import { cacheSuccessfulGet } from "../../middleware/response-cache.js";
 
 const router = Router();
 
-router.get("/academic-structure", authenticate, fetchAcademicStructure);
+router.get("/academic-structure", fetchAcademicStructure);
 router.get("/questions", authenticate, requireVerifiedLecturer, cacheSuccessfulGet, fetchLecturerQuestions);
 
 export default router;

@@ -183,7 +183,7 @@ The memory cache resets on restart and is not shared between API instances. Redi
 | `POST` | `/api/query/add` | Any signed-in user | Submit a complaint; student questions also enter the support chat |
 | `DELETE` | `/api/query/delete` | Any signed-in user | Delete own complaint |
 | `POST` | `/api/edit/query` | Any signed-in user | Edit own complaint |
-| `GET` | `/api/fetch/academic-structure` | Any signed-in user | Fetch schools, faculties, and departments for profile selections |
+| `GET` | `/api/fetch/academic-structure` | Public | Fetch schools, faculties, and departments for profile selections |
 | `GET` | `/api/fetch/questions` | Verified lecturer | Get recent complaints, filters, and counts |
 | `GET` | `/api/chat/conversations` | Student, verified lecturer, or admin | List conversations available to the signed-in user |
 | `POST` | `/api/chat/conversations` | Student | Open or retrieve a support, class-group, or matched lecturer conversation |
@@ -292,6 +292,8 @@ Example response: `{ "message": "Made changes to: name,image" }`.
 
 The API validates that the department and faculty exist and belong together. If a student changes only `department_id`, the matching `faculty_id` is set automatically. To clear a department while keeping the faculty, send `department_id: null`; to clear a faculty while a department is selected, first clear/change the department too. Only students can change their academic session, faculty, or department; lecturer assignments remain managed by an administrator.
 
+After a successful edit, call `GET /api/auth/userdata` again to refresh the profile in the frontend. The edit response is a confirmation message; the profile endpoint returns the updated IDs and display names.
+
 Example: update a student's faculty, department, and academic session:
 
 ```json
@@ -309,7 +311,7 @@ Example: update a student's faculty, department, and academic session:
 
 ### Fetch faculties and departments for profile forms
 
-`GET /api/fetch/academic-structure` — requires authentication. Returns all schools, nested faculties, and each faculty's departments. Use the IDs from this response in the profile edit request; when the user changes faculty, show only departments belonging to that faculty.
+`GET /api/fetch/academic-structure` — public; no authentication header is required. Returns all schools, nested faculties, and each faculty's departments. Use the IDs from this response in the profile edit request; when the user changes faculty, show only departments belonging to that faculty.
 
 ```json
 {
