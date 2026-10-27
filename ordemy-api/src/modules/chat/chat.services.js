@@ -64,14 +64,22 @@ async function LoadConversation(conversationId) {
 }
 
 export async function AuthorizeConversation(conversationId, user) {
+    const [userRows] = await pool.query(
+        "SELECT id, role, is_verified FROM users WHERE id = ?",
+        [user.id]
+    );
+    const currentUser = userRows[0];
+    if (!currentUser) throw new HttpError(401, "Authenticated user not found");
+    currentUser.is_verified = Boolean(currentUser.is_verified);
+
     const conversation = await LoadConversation(conversationId);
     const allowed =
-        (user.role === "student" && conversation.student_id === user.id) ||
-        (user.role === "lecturer" &&
+        (currentUser.role === "student" && conversation.student_id === currentUser.id) ||
+        (currentUser.role === "lecturer" &&
             conversation.type === "lecturer" &&
-            conversation.lecturer_id === user.id &&
-            user.is_verified) ||
-        (user.role === "admin" && conversation.type === "support");
+            conversation.lecturer_id === currentUser.id &&
+            currentUser.is_verified) ||
+        (currentUser.role === "admin" && conversation.type === "support");
     if (!allowed) throw new HttpError(403, "You cannot access this conversation");
     return conversation;
 }
@@ -247,12 +255,6 @@ export async function ListMessages(conversationId, user, query = {}) {
 export async function SendMessage(conversationId, user, body) {
     const messageBody = ValidateMessage(body);
     const conversation = await AuthorizeConversation(conversationId, user);
-    if (
-        (conversation.type === "support" && user.role !== "student" && user.role !== "admin") ||
-        (conversation.type === "lecturer" && user.role !== "student" && user.role !== "lecturer")
-    ) {
-        throw new HttpError(403, "Your account cannot send messages in this conversation");
-    }
 
     const connection = await pool.getConnection();
     try {
