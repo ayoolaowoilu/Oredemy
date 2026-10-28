@@ -100,6 +100,16 @@ export async function SaveProfileImage(userId, imageBuffer, contentType) {
     if (!allowedTypes.has(contentType)) {
         throw new HttpError(400, "Profile image must be JPEG, PNG, or WebP");
     }
+    const isJpeg = contentType === "image/jpeg" &&
+        imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8 && imageBuffer[2] === 0xff;
+    const isPng = contentType === "image/png" &&
+        imageBuffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const isWebp = contentType === "image/webp" &&
+        imageBuffer.toString("ascii", 0, 4) === "RIFF" &&
+        imageBuffer.toString("ascii", 8, 12) === "WEBP";
+    if (!isJpeg && !isPng && !isWebp) {
+        throw new HttpError(400, "The selected file is not a valid JPEG, PNG, or WebP image");
+    }
 
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
     const apiKey = process.env.CLOUDINARY_API_KEY;
@@ -123,14 +133,19 @@ export async function SaveProfileImage(userId, imageBuffer, contentType) {
     formData.append("folder", folder);
     formData.append("signature", signature);
 
-    const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-        {
-            method: "POST",
-            body: formData,
-            signal: AbortSignal.timeout(30_000),
-        }
-    );
+    let response;
+    try {
+        response = await fetch(
+            `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+            {
+                method: "POST",
+                body: formData,
+                signal: AbortSignal.timeout(30_000),
+            }
+        );
+    } catch {
+        throw new HttpError(502, "Cloudinary image service is temporarily unavailable");
+    }
     const result = await response.json().catch(() => ({}));
     if (!response.ok || typeof result.secure_url !== "string") {
         throw new HttpError(502, "Cloudinary could not upload the profile image");

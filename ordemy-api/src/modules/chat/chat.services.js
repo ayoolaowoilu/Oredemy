@@ -145,10 +145,19 @@ export async function FindOrCreateLecturerConversation(connection, userId, stude
 async function LoadConversation(conversationId) {
     ValidateConversationId(conversationId);
     const [rows] = await pool.query(
-        `SELECT id, type, student_id, lecturer_id, class_department_id,
-                class_session, created_at, updated_at
-         FROM chat_conversations
-         WHERE id = ?`,
+        `SELECT conversation.id, conversation.type, conversation.student_id,
+                conversation.lecturer_id, conversation.class_department_id,
+                conversation.class_session, conversation.created_at,
+                conversation.updated_at, student.name AS student_name,
+                student.image AS student_image, lecturer.name AS lecturer_name,
+                lecturer.image AS lecturer_image,
+                class_department.name AS class_department
+         FROM chat_conversations AS conversation
+         LEFT JOIN users AS student ON student.id = conversation.student_id
+         LEFT JOIN users AS lecturer ON lecturer.id = conversation.lecturer_id
+         LEFT JOIN departments AS class_department
+           ON class_department.id = conversation.class_department_id
+         WHERE conversation.id = ?`,
         [conversationId]
     );
     if (!rows[0]) throw new HttpError(404, "Conversation not found");

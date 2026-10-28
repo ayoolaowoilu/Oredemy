@@ -321,8 +321,8 @@ async function processSlot(lecturer, slot) {
         );
 
         if (questionCount > 0) {
-            const config = await loadAiConfiguration(lecturer.id);
-            if (!config) throw new Error("AI settings are not configured");
+            const config = await loadAiConfiguration();
+            if (!config) throw new Error("GROQ_API_KEY is not configured in the API environment");
             let lastQuestionId = 0;
             let processedCount = alreadyGroupedIds.size;
             while (true) {

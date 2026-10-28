@@ -31,8 +31,11 @@ export default function Onboarding() {
   >(null);
   const [admissionSession, setAdmissionSession] = useState("");
   const [adviserSession, setAdviserSession] = useState("");
-  const [profileImage, setProfileImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(user?.image ?? null);
+  const [selectedImage, setSelectedImage] = useState<{
+    file: File;
+    preview: string;
+  } | null>(null);
+  const imagePreview = selectedImage?.preview ?? user?.image ?? null;
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -63,14 +66,10 @@ export default function Onboarding() {
   }, []);
 
   useEffect(() => {
-    if (!profileImage) {
-      setImagePreview(user?.image ?? null);
-      return;
-    }
-    const previewUrl = URL.createObjectURL(profileImage);
-    setImagePreview(previewUrl);
+    const previewUrl = selectedImage?.preview;
+    if (!previewUrl) return;
     return () => URL.revokeObjectURL(previewUrl);
-  }, [profileImage, user?.image]);
+  }, [selectedImage?.preview]);
 
   const selectedSchool = schools.find(
     (school) => school.id === selectedSchoolId,
@@ -137,8 +136,8 @@ export default function Onboarding() {
           token,
         );
       }
-      if (profileImage) {
-        await UploadProfileImage(profileImage, token);
+      if (selectedImage) {
+        await UploadProfileImage(selectedImage.file, token);
       }
       await refreshProfile();
       navigate(isAdviser ? "/" : "/dashboard/student", { replace: true });
@@ -190,16 +189,22 @@ export default function Onboarding() {
                   const file = event.target.files?.[0] ?? null;
                   if (file && !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
                     setError("Choose a JPEG, PNG, or WebP image.");
+                    setSelectedImage(null);
                     event.target.value = "";
                     return;
                   }
                   if (file && file.size > 5 * 1024 * 1024) {
                     setError("Choose an image that is 5 MB or smaller.");
+                    setSelectedImage(null);
                     event.target.value = "";
                     return;
                   }
                   setError("");
-                  setProfileImage(file);
+                  setSelectedImage(
+                    file
+                      ? { file, preview: URL.createObjectURL(file) }
+                      : null,
+                  );
                 }}
                 className="mt-1 block w-full max-w-xs text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-[#2501FF]/10 file:px-3 file:py-2 file:text-xs file:font-bold file:text-[#2501FF] hover:file:bg-[#2501FF]/15"
               />

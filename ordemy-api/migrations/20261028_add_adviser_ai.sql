@@ -1,13 +1,3 @@
-CREATE TABLE adviser_ai_settings (
-    lecturer_id VARCHAR(36) PRIMARY KEY,
-    encrypted_api_key TEXT NOT NULL,
-    model VARCHAR(100) NOT NULL DEFAULT 'openai/gpt-oss-20b',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_adviser_ai_settings_lecturer
-        FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
 CREATE TABLE adviser_ai_runs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     lecturer_id VARCHAR(36) NOT NULL,
