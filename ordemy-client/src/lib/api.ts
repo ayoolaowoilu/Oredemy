@@ -26,11 +26,12 @@ interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   token?: string | null;
+  cache?: RequestCache;
 }
 
 export async function apiRequest<T>(
   path: string,
-  { method = "GET", body, token }: RequestOptions = {},
+  { method = "GET", body, token, cache }: RequestOptions = {},
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -40,6 +41,7 @@ export async function apiRequest<T>(
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache,
   });
 
   const result = await response.json().catch(() => ({}));

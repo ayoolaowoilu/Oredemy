@@ -2,6 +2,7 @@ import { FetchAcademicStructure, FetchLecturerQuestions } from "./fetch.services
 
 export async function fetchAcademicStructure(req, res) {
     const data = await FetchAcademicStructure();
+    res.set("Cache-Control", "no-store");
     return res.status(200).json(data);
 }
 

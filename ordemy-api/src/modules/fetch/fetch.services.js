@@ -7,6 +7,7 @@ const QUERY_TYPES = ["Results", "Facilities", "Timetable", "Other"];
 export async function FetchAcademicStructure() {
     const [rows] = await pool.query(
         `SELECT schools.id AS school_id, schools.name AS school_name,
+                schools.calendar_offset AS school_calendar_offset,
                 faculties.id AS faculty_id, faculties.name AS faculty_name,
                 departments.id AS department_id, departments.name AS department_name
          FROM schools
@@ -19,7 +20,12 @@ export async function FetchAcademicStructure() {
     for (const row of rows) {
         let school = schools.get(row.school_id);
         if (!school) {
-            school = { id: row.school_id, name: row.school_name, faculties: [] };
+            school = {
+                id: row.school_id,
+                name: row.school_name,
+                calendar_offset: Number(row.school_calendar_offset),
+                faculties: [],
+            };
             schools.set(row.school_id, school);
         }
         if (row.faculty_id === null) continue;

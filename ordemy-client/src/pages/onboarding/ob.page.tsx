@@ -244,7 +244,7 @@ export default function Onboarding() {
           {level !== null && <p>Your calculated level: {level} level</p>}
           <p>
             {selectedSchool?.name} session offset:{" "}
-            {selectedSchool?.calendar_offset ?? 0}
+            {selectedSchool?.calendar_offset}
           </p>
         </>
       )}
