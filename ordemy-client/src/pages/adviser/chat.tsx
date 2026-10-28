@@ -3,6 +3,7 @@ import {
   MessageCircle,
   MessageSquareText,
   Plus,
+  RefreshCw,
   Send,
   UsersRound,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import {
   fetchAdviserConversations,
   fetchAdviserMessages,
   fetchClassSessions,
+  sendAdviserMessage,
 } from "./api";
 import { AdviserCard, AdviserNotice, AdviserPageIntro } from "./shared";
 
@@ -189,33 +191,84 @@ export default function AdviserChat() {
     }
   }
 
-  function sendMessage(event: FormEvent<HTMLFormElement>) {
+  async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const socket = socketRef.current;
-    if (!selected || !draft.trim() || !socket?.connected || sending) {
-      if (!socket?.connected) setError("Live chat is reconnecting. Please wait and try again.");
-      return;
-    }
+    if (!selected || !draft.trim() || sending) return;
     setSending(true);
     setError("");
-    socket.emit(
-      "chat:message",
-      { conversationId: selected.id, body: draft.trim() },
-      (result: { ok: boolean; data?: ChatMessage; error?: { message: string } }) => {
-        setSending(false);
-        const message = result.data;
-        if (!result.ok || !message) {
-          setError(result.error?.message ?? "Your message could not be sent.");
-          return;
-        }
-        setMessages((current) =>
-          current.some((item) => item.id === message.id)
-            ? current
-            : [...current, message],
-        );
-        setDraft("");
-      },
-    );
+    if (socket?.connected) {
+      socket.timeout(10_000).emit(
+        "chat:message",
+        { conversationId: selected.id, body: draft.trim() },
+        (
+          timeoutError: Error | null,
+          result?: { ok: boolean; data?: ChatMessage; error?: { message: string } },
+        ) => {
+          setSending(false);
+          const message = result?.data;
+          if (timeoutError || !result?.ok || !message) {
+            setError(
+              timeoutError
+                ? "No confirmation was received. Refresh the conversation before retrying."
+                : result?.error?.message ?? "Your message could not be sent.",
+            );
+            return;
+          }
+          setMessages((current) =>
+            current.some((item) => item.id === message.id)
+              ? current
+              : [...current, message],
+          );
+          setDraft("");
+        },
+      );
+      return;
+    }
+
+    try {
+      const response = await sendAdviserMessage(selected.id, draft.trim());
+      setMessages((current) =>
+        current.some((item) => item.id === response.data.id)
+          ? current
+          : [...current, response.data],
+      );
+      setConversations((current) =>
+        current.map((item) =>
+          item.id === selected.id
+            ? {
+                ...item,
+                last_message: response.data.body,
+                last_message_at: response.data.created_at,
+              }
+            : item,
+        ),
+      );
+      setDraft("");
+    } catch (sendError: unknown) {
+      setError(
+        sendError instanceof ApiError || sendError instanceof Error
+          ? sendError.message
+          : "Your message could not be sent.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function refreshMessages() {
+    if (!selected) return;
+    setError("");
+    try {
+      const response = await fetchAdviserMessages(selected.id);
+      setMessages(response.data);
+    } catch (refreshError: unknown) {
+      setError(
+        refreshError instanceof ApiError || refreshError instanceof Error
+          ? refreshError.message
+          : "Could not refresh this conversation.",
+      );
+    }
   }
 
   return (
@@ -261,7 +314,7 @@ export default function AdviserChat() {
               <p className="text-sm font-bold text-slate-900">Conversations</p>
               <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold ${connected ? "text-emerald-700" : "text-amber-700"}`}>
                 <span className={`size-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
-                {connected ? "Live" : "Connecting"}
+                {connected ? "Live" : "Socket offline"}
               </span>
             </div>
             <div className="flex max-h-64 gap-2 overflow-x-auto p-3 lg:max-h-[590px] lg:flex-col lg:overflow-y-auto">
@@ -330,6 +383,14 @@ export default function AdviserChat() {
                       {selected.type === "class" ? "Department group conversation" : "One-to-one adviser conversation"}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => void refreshMessages()}
+                    aria-label="Refresh messages"
+                    className="ml-auto grid size-9 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-[#2501FF]"
+                  >
+                    <RefreshCw size={16} />
+                  </button>
                 </div>
                 <div
                   ref={scrollContainer}
@@ -364,13 +425,13 @@ export default function AdviserChat() {
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     maxLength={5000}
-                    placeholder={connected ? "Write a message…" : "Connecting to live chat…"}
-                    disabled={!connected || sending}
+                    placeholder={connected ? "Write a message…" : "Write a message (realtime unavailable)…"}
+                    disabled={sending}
                     className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#2501FF]/50 focus:ring-4 focus:ring-[#2501FF]/[0.08] disabled:bg-slate-50"
                   />
                   <button
                     type="submit"
-                    disabled={!connected || sending || !draft.trim()}
+                    disabled={sending || !draft.trim()}
                     aria-label="Send message"
                     className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#2501FF] text-white hover:bg-[#1d00d6] disabled:opacity-50"
                   >

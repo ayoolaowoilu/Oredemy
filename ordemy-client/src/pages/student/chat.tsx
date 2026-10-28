@@ -139,7 +139,6 @@ export default function StudentChat() {
   useEffect(() => {
     if (!conversationId) return;
     let active = true;
-    setMessages([]);
     fetchConversationMessages(conversationId)
       .then((response) => {
         if (active) setMessages(response.data);
@@ -184,14 +183,21 @@ export default function StudentChat() {
     setError("");
     const socket = socketRef.current;
     if (socket?.connected) {
-      socket.emit(
+      socket.timeout(10_000).emit(
         "chat:message",
         { conversationId: conversation.id, body: draft.trim() },
-        (result: { ok: boolean; data?: ChatMessage; error?: { message: string } }) => {
+        (
+          timeoutError: Error | null,
+          result?: { ok: boolean; data?: ChatMessage; error?: { message: string } },
+        ) => {
           setSending(false);
-          const message = result.data;
-          if (!result.ok || !message) {
-            setError(result.error?.message ?? "Your message could not be sent.");
+          const message = result?.data;
+          if (timeoutError || !result?.ok || !message) {
+            setError(
+              timeoutError
+                ? "No confirmation was received. Refresh the conversation before retrying."
+                : result?.error?.message ?? "Your message could not be sent.",
+            );
             return;
           }
           setMessages((current) =>
@@ -205,9 +211,13 @@ export default function StudentChat() {
       return;
     }
     try {
-      await sendConversationMessage(conversation.id, draft.trim());
+      const response = await sendConversationMessage(conversation.id, draft.trim());
+      setMessages((current) =>
+        current.some((existing) => existing.id === response.data.id)
+          ? current
+          : [...current, response.data],
+      );
       setDraft("");
-      await loadMessages(conversation.id);
     } catch (sendError) {
       setError(
         sendError instanceof Error
@@ -223,9 +233,9 @@ export default function StudentChat() {
     <>
       {error && <Notice onDismiss={() => setError("")}>{error}</Notice>}
       <PageIntro
-        eyebrow="Direct support"
-        title="Chat with your adviser"
-        description="Your questions are routed to a verified lecturer for your department. Messages and question replies stay together here."
+        eyebrow="Department community"
+        title="Chats"
+        description="Talk with your adviser or join the group chat for your department and academic session."
         action={
           <button
             type="button"
@@ -247,7 +257,12 @@ export default function StudentChat() {
               <button
                 type="button"
                 key={item.id}
-                onClick={() => setConversation(item)}
+                onClick={() => {
+                  if (conversation?.id !== item.id) {
+                    setMessages([]);
+                    setConversation(item);
+                  }
+                }}
                 aria-pressed={conversation?.id === item.id}
                 className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition ${
                   conversation?.id === item.id
@@ -284,7 +299,11 @@ export default function StudentChat() {
           </div>
           <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${connected ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
             <span className={`size-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-400"}`} />
-            {connected ? "Live adviser channel" : "Adviser channel"}
+            {connected
+              ? conversation?.type === "class"
+                ? "Live group channel"
+                : "Live adviser channel"
+              : "Socket disconnected"}
           </span>
         </div>
 
@@ -340,8 +359,9 @@ export default function StudentChat() {
                 Start a conversation
               </h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                Send your adviser a message. Questions you submit on the
-                Questions page will also appear in this chat.
+                {conversation?.type === "class"
+                  ? "Start a conversation with students and your adviser in this class group."
+                  : "Send your adviser a message. Questions you submit on the Questions page will also appear in this chat."}
               </p>
               <Link
                 to="/dashboard/student/questions"
@@ -358,7 +378,9 @@ export default function StudentChat() {
           className="flex items-end gap-3 border-t border-slate-100 bg-white p-4 sm:p-5"
         >
           <label className="sr-only" htmlFor="adviser-chat-message">
-            Write a message to your adviser
+            {conversation?.type === "class"
+              ? "Write a message to your class group"
+              : "Write a message to your adviser"}
           </label>
           <textarea
             id="adviser-chat-message"

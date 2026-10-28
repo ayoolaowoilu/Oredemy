@@ -7,6 +7,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
+import { UserAvatar } from "../../components/user-avatar";
 
 const links = [
   { label: "Overview", to: "/dashboard/student", icon: LayoutDashboard, end: true },
@@ -104,9 +105,7 @@ export default function StudentLayout() {
                     {user?.department ?? "Student"}
                   </p>
                 </div>
-                <span className="grid size-9 place-items-center rounded-full bg-[#2501FF]/10 text-sm font-bold text-[#2501FF]">
-                  {user?.name?.trim().charAt(0).toUpperCase() ?? "S"}
-                </span>
+                <UserAvatar image={user?.image} name={user?.name} className="size-9 text-sm" />
                 <button
                   type="button"
                   onClick={logout}

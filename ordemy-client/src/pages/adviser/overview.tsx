@@ -34,7 +34,6 @@ const quickLinks = [
     description: "Respond directly or join the department group.",
     icon: MessageCircle,
   },
-  {
 ];
 
 export default function AdviserOverview() {
