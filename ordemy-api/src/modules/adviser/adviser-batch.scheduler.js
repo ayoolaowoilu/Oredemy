@@ -416,10 +416,11 @@ async function schedulerTick() {
             await writeSchedulerLog("heartbeat", `Scheduler active at ${heartbeatKey} (${TIME_ZONE})`);
         }
 
+        if (!process.env.GROQ_API_KEY) return;
+
         const [lecturers] = await pool.query(
             `SELECT users.id, users.department_id, users.session
              FROM users
-             INNER JOIN adviser_ai_settings ON adviser_ai_settings.lecturer_id = users.id
              WHERE users.role = 'lecturer'
                AND users.is_verified = TRUE
                AND users.department_id IS NOT NULL

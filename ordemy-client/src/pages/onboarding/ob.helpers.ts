@@ -1,4 +1,4 @@
-import { ApiError, apiRequest } from "../../lib/api";
+import { ApiError, apiRequest, apiUpload } from "../../lib/api";
 import type { EditUserRequest } from "../../types/edit";
 import type { AcademicSchool, ApiMessage } from "../../utils/types";
 
@@ -22,6 +22,9 @@ export const SaveAdviserDepartment = (
     token,
     body: { department_id: departmentId, session },
   });
+
+export const UploadProfileImage = (image: File, token: string) =>
+  apiUpload<{ image: string }>("/api/auth/profile-image", image, token);
 
 export const FetchAcademicStructure = async () => {
   const response = await apiRequest<{ data: AcademicSchool[] }>(

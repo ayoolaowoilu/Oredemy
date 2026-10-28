@@ -16,7 +16,6 @@ import AdviserChat from "./pages/adviser/chat";
 import AdviserClassReps from "./pages/adviser/class-reps";
 import AdviserLayout from "./pages/adviser/layout";
 import AdviserOverview from "./pages/adviser/overview";
-import AdviserSettings from "./pages/adviser/settings";
 
 export default function App() {
   return (
@@ -46,7 +45,6 @@ export default function App() {
           <Route path="ai" element={<AdviserAi />} />
           <Route path="class-reps" element={<AdviserClassReps />} />
           <Route path="chat" element={<AdviserChat />} />
-          <Route path="settings" element={<AdviserSettings />} />
         </Route>
       </Route>
 

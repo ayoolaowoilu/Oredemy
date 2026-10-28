@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   LogOut,
   MessageCircle,
-  Settings2,
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 
@@ -14,7 +13,6 @@ const links = [
   { label: "AI review", to: "/dashboard/adviser/ai", icon: Bot },
   { label: "Class reps", to: "/dashboard/adviser/class-reps", icon: CheckCheck },
   { label: "Chats", to: "/dashboard/adviser/chat", icon: MessageCircle },
-  { label: "AI settings", to: "/dashboard/adviser/settings", icon: Settings2 },
 ];
 
 export default function AdviserLayout() {

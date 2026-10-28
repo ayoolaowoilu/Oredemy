@@ -143,7 +143,9 @@ export interface ChatConversation {
     class_department_id?: number | null;
     class_session?: string | null;
     student_name?: string;
+    student_image?: string | null;
     lecturer_name?: string | null;
+    lecturer_image?: string | null;
     class_department?: string | null;
     created_at: string;
     updated_at: string;
@@ -156,6 +158,7 @@ export interface ChatMessage {
     conversation_id: string;
     sender_id: string;
     sender_name: string;
+    sender_image?: string | null;
     query_id: number | null;
     body: string;
     created_at: string;

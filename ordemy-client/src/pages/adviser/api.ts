@@ -57,25 +57,6 @@ export const fetchAdviserDashboard = () =>
     cache: "no-store",
   });
 
-export const fetchAiSettings = () =>
-  apiRequest<{
-    provider: string;
-    baseUrl: string;
-    model: string;
-    keyConfigured: boolean;
-    updatedAt: string | null;
-  }>("/api/adviser/ai-settings", {
-    token: getToken(),
-    cache: "no-store",
-  });
-
-export const saveAiSettings = (apiKey: string, model: string) =>
-  apiRequest("/api/adviser/ai-settings", {
-    method: "PUT",
-    token: getToken(),
-    body: { apiKey, model },
-  });
-
 export const fetchAiRuns = () =>
   apiRequest<{ data: AiRun[] }>("/api/adviser/ai-runs", {
     token: getToken(),

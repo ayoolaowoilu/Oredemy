@@ -5,6 +5,7 @@ import { generateToken } from "../../utils/jwt.js";
 import { LoginSchema , RegistrationSchema } from "./auth.validation.js";
 import { v4 as uuidv4 } from "uuid";
 import { HttpError } from "../../utils/http-error.js";
+import { createHash } from "node:crypto";
 
 
 export async function RegisterUser(userData) {
@@ -65,7 +66,7 @@ export async function LoginUser(userData) {
 
 export async function GetUserData(userId) {
     const [rows] = await pool.query(
-        `SELECT users.id, users.name, users.email, users.role,
+        `SELECT users.id, users.name, users.email, users.role, users.image,
                 users.is_verified, users.session, users.admission_session,
                 users.faculty_id, users.department_id,
                 faculties.name AS faculty, departments.name AS department,
@@ -86,6 +87,57 @@ export async function GetUserData(userId) {
             ? null
             : Number(rows[0].calendar_offset),
     };
+}
+
+export async function SaveProfileImage(userId, imageBuffer, contentType) {
+    const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+    if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
+        throw new HttpError(400, "Select an image to upload");
+    }
+    if (imageBuffer.length > 5 * 1024 * 1024) {
+        throw new HttpError(413, "Profile images must be 5 MB or smaller");
+    }
+    if (!allowedTypes.has(contentType)) {
+        throw new HttpError(400, "Profile image must be JPEG, PNG, or WebP");
+    }
+
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+    if (!cloudName || !apiKey || !apiSecret) {
+        throw new HttpError(503, "Profile image uploads are not configured on the server");
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(cloudName)) {
+        throw new HttpError(500, "Cloudinary configuration is invalid");
+    }
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const folder = "ordemy/profiles";
+    const signature = createHash("sha1")
+        .update(`folder=${folder}&timestamp=${timestamp}${apiSecret}`)
+        .digest("hex");
+    const formData = new FormData();
+    formData.append("file", new Blob([imageBuffer], { type: contentType }), "profile-image");
+    formData.append("api_key", apiKey);
+    formData.append("timestamp", String(timestamp));
+    formData.append("folder", folder);
+    formData.append("signature", signature);
+
+    const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        {
+            method: "POST",
+            body: formData,
+            signal: AbortSignal.timeout(30_000),
+        }
+    );
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || typeof result.secure_url !== "string") {
+        throw new HttpError(502, "Cloudinary could not upload the profile image");
+    }
+
+    await pool.query("UPDATE users SET image = ? WHERE id = ?", [result.secure_url, userId]);
+    return { image: result.secure_url };
 }
 
 export async function AssignAdviserDepartment(userId, departmentId, session) {

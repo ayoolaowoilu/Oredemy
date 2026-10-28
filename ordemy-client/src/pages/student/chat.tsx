@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDown, MessageCircle, RefreshCw, Send } from "lucide-react";
+import { ArrowDown, MessageCircle, RefreshCw, Send, UsersRound } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { ApiError } from "../../lib/api";
 import { connectChatSocket } from "../../utils/chat-socket";
 import type { ChatConversation, ChatMessage } from "../../utils/types";
+import { UserAvatar } from "../../components/user-avatar";
 import {
   createAdviserConversation,
+  createStudentClassConversation,
   fetchChatConversations,
   fetchConversationMessages,
   sendConversationMessage,
@@ -15,6 +17,7 @@ import { Card, Notice, PageIntro, PrimaryButton } from "./shared";
 
 export default function StudentChat() {
   const { user } = useAuth();
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -30,6 +33,9 @@ export default function StudentChat() {
     const response = await fetchConversationMessages(conversationId);
     setMessages(response.data);
   }, []);
+
+  const classConversation = conversations.find((item) => item.type === "class");
+  const adviserConversation = conversations.find((item) => item.type === "lecturer");
 
   useEffect(() => {
     if (!conversationId) return;
@@ -74,18 +80,44 @@ export default function StudentChat() {
     async function initialize() {
       try {
         const response = await fetchChatConversations();
-        let adviserConversation = response.data.find(
-          (item) => item.type === "lecturer",
-        );
-        if (!adviserConversation) {
-          adviserConversation = (await createAdviserConversation()).data;
-        }
+        const existingClass = response.data.find((item) => item.type === "class");
+        const existingAdviser = response.data.find((item) => item.type === "lecturer");
+        const [classResult, adviserResult] = await Promise.allSettled([
+          existingClass
+            ? Promise.resolve(existingClass)
+            : createStudentClassConversation().then((result) => result.data),
+          existingAdviser
+            ? Promise.resolve(existingAdviser)
+            : createAdviserConversation().then((result) => result.data),
+        ]);
         if (!active) return;
-        setConversation(adviserConversation);
-        const messagesResponse = await fetchConversationMessages(
-          adviserConversation.id,
-        );
-        if (active) setMessages(messagesResponse.data);
+        const available = [
+          ...(classResult.status === "fulfilled" ? [classResult.value] : []),
+          ...(adviserResult.status === "fulfilled" ? [adviserResult.value] : []),
+        ];
+        setConversations(available);
+        setConversation(available[0] ?? null);
+        if (available.length === 0) {
+          const failure = classResult.status === "rejected"
+            ? classResult.reason
+            : adviserResult.status === "rejected"
+              ? adviserResult.reason
+              : null;
+          if (failure) {
+            setError(
+              failure instanceof ApiError || failure instanceof Error
+                ? failure.message
+                : "Your chats could not be opened.",
+            );
+          }
+        } else if (classResult.status === "rejected" || adviserResult.status === "rejected") {
+          const failure = classResult.status === "rejected" ? classResult.reason : adviserResult.status === "rejected" ? adviserResult.reason : null;
+          setError(
+            failure instanceof ApiError || failure instanceof Error
+              ? failure.message
+              : "One of your chats could not be opened.",
+          );
+        }
       } catch (loadError: unknown) {
         if (active) {
           setError(
@@ -103,6 +135,28 @@ export default function StudentChat() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    let active = true;
+    setMessages([]);
+    fetchConversationMessages(conversationId)
+      .then((response) => {
+        if (active) setMessages(response.data);
+      })
+      .catch((loadError: unknown) => {
+        if (active) {
+          setError(
+            loadError instanceof ApiError || loadError instanceof Error
+              ? loadError.message
+              : "Messages could not be loaded.",
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [conversationId]);
 
   useEffect(() => {
     const container = scrollContainer.current;
@@ -184,17 +238,47 @@ export default function StudentChat() {
         }
       />
       <Card className="overflow-hidden p-0">
+        <div className="flex gap-2 border-b border-slate-100 bg-white px-4 py-3 sm:px-6">
+          {[
+            { item: classConversation, label: "Class group", icon: UsersRound },
+            { item: adviserConversation, label: "Adviser chat", icon: MessageCircle },
+          ].map(({ item, label, icon: Icon }) =>
+            item ? (
+              <button
+                type="button"
+                key={item.id}
+                onClick={() => setConversation(item)}
+                aria-pressed={conversation?.id === item.id}
+                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition ${
+                  conversation?.id === item.id
+                    ? "bg-[#2501FF] text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-[#2501FF]/10 hover:text-[#2501FF]"
+                }`}
+              >
+                <Icon size={15} /> {label}
+              </button>
+            ) : null,
+          )}
+        </div>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-full bg-[#2501FF]/[0.08] text-[#2501FF]">
-              <MessageCircle size={19} />
-            </span>
+            {conversation?.type === "lecturer" ? (
+              <UserAvatar image={conversation.lecturer_image} name={conversation.lecturer_name} className="size-10" />
+            ) : (
+              <span className="grid size-10 place-items-center rounded-full bg-[#2501FF]/[0.08] text-[#2501FF]">
+                {conversation?.type === "class" ? <UsersRound size={19} /> : <MessageCircle size={19} />}
+              </span>
+            )}
             <div>
               <p className="text-sm font-bold text-slate-900">
-                Department adviser
+                {conversation?.type === "class"
+                  ? `Class group · ${conversation.class_session ?? user?.session ?? ""}`
+                  : conversation?.lecturer_name ?? "Department adviser"}
               </p>
               <p className="mt-0.5 text-xs text-slate-500">
-                {user?.department ?? "Your department"} · replies appear here
+                {conversation?.type === "class"
+                  ? `${conversation.class_department ?? user?.department ?? "Your department"} student cohort`
+                  : `${user?.department ?? "Your department"} · replies appear here`}
               </p>
             </div>
           </div>
@@ -217,35 +301,34 @@ export default function StudentChat() {
             messages.map((message) => {
               const isMine = message.sender_id === user?.id;
               return (
-                <article
+                <div
                   key={message.id}
-                  className={`max-w-[88%] rounded-2xl px-4 py-3 sm:max-w-[75%] ${
-                    isMine
-                      ? "ml-auto rounded-br-md bg-[#2501FF] text-white"
-                      : "mr-auto rounded-bl-md border border-slate-200 bg-white text-slate-800"
-                  }`}
+                  className={`flex max-w-[94%] items-end gap-2 sm:max-w-[82%] ${isMine ? "ml-auto flex-row-reverse" : "mr-auto"}`}
                 >
-                  {!isMine && (
-                    <p className="mb-1 text-[10px] font-bold text-[#2501FF]">
-                      {message.sender_name}
+                  <UserAvatar
+                    image={isMine ? user?.image : message.sender_image}
+                    name={isMine ? user?.name : message.sender_name}
+                    className="size-8 shrink-0"
+                  />
+                  <article className={`min-w-0 rounded-2xl px-4 py-3 ${isMine ? "rounded-br-md bg-[#2501FF] text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-800"}`}>
+                    {!isMine && conversation?.type === "class" && (
+                      <p className="mb-1 text-[10px] font-bold text-[#2501FF]">
+                        {message.sender_name}
+                      </p>
+                    )}
+                    <p className="whitespace-pre-wrap break-words text-sm leading-6">
+                      {message.body}
                     </p>
-                  )}
-                  <p className="whitespace-pre-wrap break-words text-sm leading-6">
-                    {message.body}
-                  </p>
-                  <p
-                    className={`mt-2 text-right text-[10px] ${
-                      isMine ? "text-white/65" : "text-slate-400"
-                    }`}
-                  >
-                    {new Intl.DateTimeFormat(undefined, {
-                      hour: "numeric",
-                      minute: "2-digit",
-                      month: "short",
-                      day: "numeric",
-                    }).format(new Date(message.created_at))}
-                  </p>
-                </article>
+                    <p className={`mt-2 text-right text-[10px] ${isMine ? "text-white/65" : "text-slate-400"}`}>
+                      {new Intl.DateTimeFormat(undefined, {
+                        hour: "numeric",
+                        minute: "2-digit",
+                        month: "short",
+                        day: "numeric",
+                      }).format(new Date(message.created_at))}
+                    </p>
+                  </article>
+                </div>
               );
             })
           ) : (
@@ -284,11 +367,11 @@ export default function StudentChat() {
             maxLength={5000}
             rows={2}
             placeholder={
-              user?.department_id
+              user?.department_id && user?.session
                 ? "Write a message…"
                 : "Complete your academic profile to contact an adviser"
             }
-            disabled={!conversation || !user?.department_id}
+            disabled={!conversation || !user?.department_id || !user?.session}
             className="max-h-36 min-h-12 flex-1 resize-y rounded-xl border border-slate-200 px-3.5 py-3 text-sm leading-5 outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10 disabled:bg-slate-50"
           />
           <PrimaryButton
@@ -297,7 +380,8 @@ export default function StudentChat() {
               sending ||
               !conversation ||
               !draft.trim() ||
-              !user?.department_id
+              !user?.department_id ||
+              !user?.session
             }
           >
             <span className="hidden sm:inline">

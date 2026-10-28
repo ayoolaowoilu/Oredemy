@@ -145,7 +145,7 @@ export default function AdviserAi() {
           </span>
           <h2 className="mt-4 font-bold text-slate-950">No grouped questions yet</h2>
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-            Add your Groq key in AI settings. The scheduler will create groups in the next hourly window when questions are available.
+            AI processing is configured by the server. Once the Groq secret is added to the API environment, groups will appear in the next hourly window when questions are available.
           </p>
         </AdviserCard>
       ) : (

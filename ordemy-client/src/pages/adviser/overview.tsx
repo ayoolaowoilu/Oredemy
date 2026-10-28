@@ -6,7 +6,6 @@ import {
   CheckCheck,
   MessageCircle,
   MessageSquareText,
-  Settings2,
   UsersRound,
 } from "lucide-react";
 import { ApiError } from "../../lib/api";
@@ -36,11 +35,6 @@ const quickLinks = [
     icon: MessageCircle,
   },
   {
-    to: "/dashboard/adviser/settings",
-    title: "AI configuration",
-    description: "Securely add your Groq API key and model.",
-    icon: Settings2,
-  },
 ];
 
 export default function AdviserOverview() {

@@ -9,6 +9,7 @@ import {
 import { ApiError } from "../../lib/api";
 import { useAuth } from "../../context/useAuth";
 import type { ChatConversation, ChatMessage } from "../../utils/types";
+import { UserAvatar } from "../../components/user-avatar";
 import {
   connectAdviserSocket,
   createAdviserClassChat,
@@ -277,9 +278,13 @@ export default function AdviserChat() {
                   className={`min-w-56 rounded-xl p-3 text-left transition-colors lg:min-w-0 ${selected?.id === item.id ? "bg-[#2501FF]/[0.07]" : "hover:bg-slate-50"}`}
                 >
                   <span className="flex items-center gap-2">
-                    <span className={`grid size-9 shrink-0 place-items-center rounded-full ${item.type === "class" ? "bg-violet-50 text-violet-700" : "bg-[#2501FF]/[0.08] text-[#2501FF]"}`}>
-                      {item.type === "class" ? <UsersRound size={16} /> : <MessageCircle size={16} />}
-                    </span>
+                    {item.type === "class" ? (
+                      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-700">
+                        <UsersRound size={16} />
+                      </span>
+                    ) : (
+                      <UserAvatar image={item.student_image} name={item.student_name} className="size-9 shrink-0 text-sm" />
+                    )}
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-bold text-slate-900">
                         {item.type === "class"
@@ -308,9 +313,13 @@ export default function AdviserChat() {
             {selected ? (
               <>
                 <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-4 sm:px-6">
-                  <span className="grid size-10 place-items-center rounded-full bg-[#2501FF]/[0.08] text-[#2501FF]">
-                    {selected.type === "class" ? <UsersRound size={18} /> : <MessageCircle size={18} />}
-                  </span>
+                  {selected.type === "class" ? (
+                    <span className="grid size-10 place-items-center rounded-full bg-violet-50 text-violet-700">
+                      <UsersRound size={18} />
+                    </span>
+                  ) : (
+                    <UserAvatar image={selected.student_image} name={selected.student_name} className="size-10" />
+                  )}
                   <div>
                     <p className="text-sm font-bold text-slate-900">
                       {selected.type === "class"
@@ -329,16 +338,19 @@ export default function AdviserChat() {
                   {messages.length ? messages.map((message) => {
                     const isMine = message.sender_id === user?.id;
                     return (
-                      <article
+                      <div
                         key={message.id}
-                        className={`max-w-[88%] rounded-2xl px-4 py-3 sm:max-w-[75%] ${isMine ? "ml-auto rounded-br-md bg-[#2501FF] text-white" : "mr-auto rounded-bl-md border border-slate-200 bg-white text-slate-800"}`}
+                        className={`flex max-w-[94%] items-end gap-2 sm:max-w-[82%] ${isMine ? "ml-auto flex-row-reverse" : "mr-auto"}`}
                       >
-                        {!isMine && <p className="mb-1 text-[10px] font-bold text-[#2501FF]">{message.sender_name}</p>}
-                        <p className="whitespace-pre-wrap break-words text-sm leading-6">{message.body}</p>
-                        <p className={`mt-2 text-right text-[10px] ${isMine ? "text-white/65" : "text-slate-400"}`}>
-                          {showTime(message.created_at)}
-                        </p>
-                      </article>
+                        <UserAvatar image={isMine ? user?.image : message.sender_image} name={isMine ? user?.name : message.sender_name} className="size-8 shrink-0" />
+                        <article className={`min-w-0 rounded-2xl px-4 py-3 ${isMine ? "rounded-br-md bg-[#2501FF] text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-800"}`}>
+                          {!isMine && <p className="mb-1 text-[10px] font-bold text-[#2501FF]">{message.sender_name}</p>}
+                          <p className="whitespace-pre-wrap break-words text-sm leading-6">{message.body}</p>
+                          <p className={`mt-2 text-right text-[10px] ${isMine ? "text-white/65" : "text-slate-400"}`}>
+                            {showTime(message.created_at)}
+                          </p>
+                        </article>
+                      </div>
                     );
                   }) : (
                     <div className="m-auto text-center">

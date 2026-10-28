@@ -3,6 +3,7 @@ import {
     GetUserData,
     LoginUser,
     RegisterUser,
+    SaveProfileImage,
 } from "./auth.services.js";
 
 export async function login(req, res) {
@@ -27,4 +28,13 @@ export async function AdviserOnboarding(req, res) {
         req.body?.session
     );
     return res.status(200).json(data);
+}
+
+export async function UploadProfileImage(req, res) {
+    const result = await SaveProfileImage(
+        req.authUser.id,
+        req.body,
+        req.headers["content-type"]
+    );
+    return res.status(200).json(result);
 }

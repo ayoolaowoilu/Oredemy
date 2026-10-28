@@ -1,5 +1,4 @@
 import pool from "../../config/database.js";
-import { decryptSecret, encryptSecret } from "../../utils/ai-encryption.js";
 import { HttpError } from "../../utils/http-error.js";
 import { publishChatMessage } from "../chat/chat.socket.js";
 
@@ -19,70 +18,11 @@ async function getLecturerDepartment(lecturerId) {
     return rows[0].department_id;
 }
 
-export async function GetAiSettings(lecturerId) {
-    await getLecturerDepartment(lecturerId);
-    const [rows] = await pool.query(
-        `SELECT model, created_at, updated_at
-         FROM adviser_ai_settings WHERE lecturer_id = ?`,
-        [lecturerId]
-    );
-    return {
-        provider: "groq",
-        baseUrl: GROQ_BASE_URL,
-        model: rows[0]?.model ?? DEFAULT_MODEL,
-        keyConfigured: Boolean(rows[0]),
-        updatedAt: rows[0]?.updated_at ?? null,
-    };
-}
-
-export async function SaveAiSettings(lecturerId, body) {
-    await getLecturerDepartment(lecturerId);
-    const apiKey = body?.apiKey;
-    const model = body?.model ?? DEFAULT_MODEL;
-    if (
-        typeof model !== "string" ||
-        !/^[a-zA-Z0-9._/-]{3,100}$/.test(model)
-    ) {
-        throw new HttpError(400, "Model ID contains unsupported characters");
-    }
-
-    if (apiKey === undefined || apiKey === "") {
-        const [result] = await pool.query(
-            `UPDATE adviser_ai_settings
-             SET model = ?, updated_at = CURRENT_TIMESTAMP
-             WHERE lecturer_id = ?`,
-            [model, lecturerId]
-        );
-        if (result.affectedRows === 0) {
-            throw new HttpError(400, "Enter a Groq API key to configure AI");
-        }
-    } else {
-        if (typeof apiKey !== "string" || apiKey.trim().length < 20 || apiKey.length > 500) {
-            throw new HttpError(400, "Enter a valid Groq API key");
-        }
-        const encryptedKey = encryptSecret(apiKey.trim());
-        await pool.query(
-            `INSERT INTO adviser_ai_settings (lecturer_id, encrypted_api_key, model)
-             VALUES (?, ?, ?)
-             ON DUPLICATE KEY UPDATE encrypted_api_key = VALUES(encrypted_api_key),
-                                     model = VALUES(model),
-                                     updated_at = CURRENT_TIMESTAMP`,
-            [lecturerId, encryptedKey, model]
-        );
-    }
-    return { ...(await GetAiSettings(lecturerId)), message: "AI settings saved securely" };
-}
-
 export async function loadAiConfiguration(lecturerId) {
-    const [rows] = await pool.query(
-        `SELECT encrypted_api_key, model
-         FROM adviser_ai_settings WHERE lecturer_id = ?`,
-        [lecturerId]
-    );
-    if (!rows[0]) return null;
+    if (!process.env.GROQ_API_KEY) return null;
     return {
-        apiKey: decryptSecret(rows[0].encrypted_api_key),
-        model: rows[0].model,
+        apiKey: process.env.GROQ_API_KEY,
+        model: process.env.GROQ_MODEL || DEFAULT_MODEL,
     };
 }
 
@@ -270,7 +210,8 @@ export async function SendAiGroup(lecturerId, runIdValue, groupIdValue) {
             );
             const [messageRows] = await connection.query(
                 `SELECT message.id, message.conversation_id, message.sender_id,
-                        lecturer.name AS sender_name, message.query_id,
+                        lecturer.name AS sender_name, lecturer.image AS sender_image,
+                        message.query_id,
                         message.body, message.created_at
                  FROM chat_messages AS message
                  INNER JOIN users AS lecturer ON lecturer.id = message.sender_id

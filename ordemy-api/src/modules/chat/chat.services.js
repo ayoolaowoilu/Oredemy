@@ -352,7 +352,8 @@ export async function ListConversations(user) {
         `SELECT conversation.id, conversation.type, conversation.student_id,
                 conversation.lecturer_id, conversation.class_session,
                 conversation.created_at, conversation.updated_at,
-                student.name AS student_name, lecturer.name AS lecturer_name,
+                student.name AS student_name, student.image AS student_image,
+                lecturer.name AS lecturer_name, lecturer.image AS lecturer_image,
                 class_department.name AS class_department,
                 latest.body AS last_message, latest.created_at AS last_message_at
          FROM chat_conversations AS conversation
@@ -388,7 +389,8 @@ export async function ListMessages(conversationId, user, query = {}) {
 
     const [rows] = await pool.query(
         `SELECT message.id, message.conversation_id, message.sender_id,
-                sender.name AS sender_name, message.query_id, message.body, message.created_at
+                sender.name AS sender_name, sender.image AS sender_image,
+                message.query_id, message.body, message.created_at
          FROM chat_messages AS message
          INNER JOIN users AS sender ON sender.id = message.sender_id
          WHERE message.conversation_id = ?
@@ -418,7 +420,8 @@ export async function SendMessage(conversationId, user, body) {
         );
         const [rows] = await connection.query(
             `SELECT message.id, message.conversation_id, message.sender_id,
-                    sender.name AS sender_name, message.query_id,
+                    sender.name AS sender_name, sender.image AS sender_image,
+                    message.query_id,
                     message.body, message.created_at
              FROM chat_messages AS message
              INNER JOIN users AS sender ON sender.id = message.sender_id

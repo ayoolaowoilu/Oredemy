@@ -12,6 +12,7 @@ import {
   EditRequest,
   FetchAcademicStructure,
   SaveAdviserDepartment,
+  UploadProfileImage,
 } from "./ob.helpers";
 
 const STUDENT_STEPS = ["School", "Faculty", "Department", "Academic session"];
@@ -30,6 +31,8 @@ export default function Onboarding() {
   >(null);
   const [admissionSession, setAdmissionSession] = useState("");
   const [adviserSession, setAdviserSession] = useState("");
+  const [profileImage, setProfileImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(user?.image ?? null);
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -58,6 +61,16 @@ export default function Onboarding() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!profileImage) {
+      setImagePreview(user?.image ?? null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(profileImage);
+    setImagePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [profileImage, user?.image]);
 
   const selectedSchool = schools.find(
     (school) => school.id === selectedSchoolId,
@@ -124,6 +137,9 @@ export default function Onboarding() {
           token,
         );
       }
+      if (profileImage) {
+        await UploadProfileImage(profileImage, token);
+      }
       await refreshProfile();
       navigate(isAdviser ? "/" : "/dashboard/student", { replace: true });
     } catch (requestError) {
@@ -157,6 +173,39 @@ export default function Onboarding() {
             alt="Oredemy"
             className="mb-4 h-auto w-40 object-contain"
           />
+          <div className="mb-6 flex items-center gap-4">
+            <span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-full bg-[#2501FF]/10 text-lg font-bold text-[#2501FF]">
+              {imagePreview ? (
+                <img src={imagePreview} alt="Profile preview" className="size-full object-cover" />
+              ) : (
+                user?.name?.trim().charAt(0).toUpperCase() ?? "U"
+              )}
+            </span>
+            <label className="min-w-0">
+              <span className="block text-sm font-bold text-slate-800">Profile photo <span className="font-normal text-slate-400">(optional)</span></span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  if (file && !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+                    setError("Choose a JPEG, PNG, or WebP image.");
+                    event.target.value = "";
+                    return;
+                  }
+                  if (file && file.size > 5 * 1024 * 1024) {
+                    setError("Choose an image that is 5 MB or smaller.");
+                    event.target.value = "";
+                    return;
+                  }
+                  setError("");
+                  setProfileImage(file);
+                }}
+                className="mt-1 block w-full max-w-xs text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-[#2501FF]/10 file:px-3 file:py-2 file:text-xs file:font-bold file:text-[#2501FF] hover:file:bg-[#2501FF]/15"
+              />
+              <span className="mt-1 block text-xs text-slate-400">JPEG, PNG or WebP, up to 5 MB</span>
+            </label>
+          </div>
           <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">
             {isAdviser ? "Set up your adviser profile" : "Set up your student profile"}
           </h1>

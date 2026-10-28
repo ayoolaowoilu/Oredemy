@@ -1,23 +1,13 @@
 import {
     GetAdviserDashboard,
-    GetAiSettings,
     ListAiRuns,
     ListSchedulerLogs,
     ReviewAiGroup,
-    SaveAiSettings,
     SendAiGroup,
 } from "./adviser.services.js";
 
 export async function getDashboard(req, res) {
     return res.status(200).json(await GetAdviserDashboard(req.authUser.id));
-}
-
-export async function getAiSettings(req, res) {
-    return res.status(200).json(await GetAiSettings(req.authUser.id));
-}
-
-export async function saveAiSettings(req, res) {
-    return res.status(200).json(await SaveAiSettings(req.authUser.id, req.body));
 }
 
 export async function listAiRuns(req, res) {

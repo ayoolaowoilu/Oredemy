@@ -57,3 +57,26 @@ export async function apiRequest<T>(
 
   return result as T;
 }
+
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  token: string,
+): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": file.type,
+    },
+    body: file,
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    }
+    throw new ApiError(result.message ?? "Image upload failed", response.status);
+  }
+  return result as T;
+}

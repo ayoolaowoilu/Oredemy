@@ -76,6 +76,13 @@ export const createAdviserConversation = () =>
     body: { type: "lecturer" },
   });
 
+export const createStudentClassConversation = () =>
+  apiRequest<{ data: ChatConversation }>("/api/chat/conversations", {
+    method: "POST",
+    token: getToken(),
+    body: { type: "class" },
+  });
+
 export const fetchConversationMessages = (conversationId: string) =>
   apiRequest<{ data: ChatMessage[] }>(
     `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
