@@ -18,7 +18,7 @@ async function getLecturerDepartment(lecturerId) {
     return rows[0].department_id;
 }
 
-export async function loadAiConfiguration(lecturerId) {
+export async function loadAiConfiguration() {
     if (!process.env.GROQ_API_KEY) return null;
     return {
         apiKey: process.env.GROQ_API_KEY,

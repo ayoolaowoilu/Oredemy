@@ -182,6 +182,7 @@ The memory cache resets on restart and is not shared between API instances. Redi
 | `POST` | `/api/auth/login` | Public | Log in and receive a JWT |
 | `GET` | `/api/auth/userdata` | Any signed-in user | Get the current user's profile |
 | `POST` | `/api/auth/adviser-onboarding` | Unverified lecturer | Assign the adviser to a department and class session before administrator verification |
+| `POST` | `/api/auth/profile-image` | Any signed-in user | Upload a profile image to Cloudinary and save its URL |
 | `POST` | `/api/edit/user` | Any signed-in user | Edit own profile; students can update academic details |
 | `POST` | `/api/query/add` | Signed-in user with faculty and department set | Submit a complaint; student questions also enter the support chat |
 | `DELETE` | `/api/query/delete` | Any signed-in user | Delete own complaint |
@@ -261,7 +262,11 @@ Response has the same `token` and `user` shape as register. Invalid credentials 
 
 `GET /api/auth/userdata` — requires authentication. No path, query, or body parameters. Returns `200`.
 
-Response fields: `id`, `name`, `email`, `role`, `is_verified`, `session`, `faculty_id`, `department_id`, `faculty`, `department`, `created_at`. Academic IDs, session, faculty, and department can be `null`.
+Response fields: `id`, `name`, `email`, `role`, `image`, `is_verified`, `session`, `faculty_id`, `department_id`, `faculty`, `department`, `created_at`. Academic IDs, session, faculty, and department can be `null`.
+
+### Upload a profile image
+
+`POST /api/auth/profile-image` — requires authentication. Send the image bytes directly with `Content-Type: image/jpeg`, `image/png`, or `image/webp`. Images are limited to 5 MB. The API signs the Cloudinary request using server-only environment variables, saves the returned secure URL to the signed-in user's profile, and returns `{ "image": "https://..." }`. Never put Cloudinary credentials in client code.
 
 ### Select an adviser department and class session
 
@@ -880,25 +885,18 @@ Frontend request/response TypeScript definitions are in [`types.ts`](./types.ts)
 
 For an existing database, run [`migrations/20261028_add_adviser_ai.sql`](./migrations/20261028_add_adviser_ai.sql) once before starting the updated API. If that migration was already applied, also run [`migrations/20261029_scope_adviser_scheduler_logs.sql`](./migrations/20261029_scope_adviser_scheduler_logs.sql) to scope recovery logs to the adviser. New databases receive the complete schema from `data.sql`.
 
-Set `AI_SETTINGS_ENCRYPTION_KEY` in the API environment to a base64-encoded 32-byte key. Generate one locally with:
-
-```powershell
-node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
-```
-
-Keep this key stable and private. Changing or losing it makes previously stored provider keys unreadable. Advisers configure their own Groq API key in the dashboard; the server encrypts it and never returns it to the browser. Groq receives the subject and text of questions selected for grouping. Generated replies remain drafts until an adviser reviews and sends them.
+Configure `GROQ_API_KEY` and optionally `GROQ_MODEL` in the API environment. The API key is server-only; it is not editable in the adviser dashboard or sent to the client. Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in the API environment to enable profile photo uploads. Keep all values private and out of source control. Groq receives the subject and text of questions selected for grouping. Generated replies remain drafts until an adviser reviews and sends them.
 
 The adviser endpoints are mounted under `/api/adviser` and require an authenticated, verified lecturer assigned to a department:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/adviser/dashboard` | Department question totals and pending class-rep requests |
-| `GET` / `PUT` | `/api/adviser/ai-settings` | Read masked settings or save a key/model |
 | `GET` | `/api/adviser/ai-runs` | List scheduler runs and reply drafts |
 | `GET` | `/api/adviser/scheduler-logs` | List recent scheduler startup, heartbeat and recovery logs |
 | `PATCH` | `/api/adviser/ai-runs/:runId/groups/:groupId` | Save an edited draft |
 | `POST` | `/api/adviser/ai-runs/:runId/groups/:groupId/send` | Send a reviewed draft to its students |
 
-The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos`. It writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
+The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos` when the server-side Groq key is configured. It writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
 
 Adviser chat uses the existing authenticated Socket.IO endpoint. Verified lecturers can list `/api/chat/class-sessions` for their assigned session and create or open that department group with `POST /api/chat/conversations` using `{ "type": "class", "session": "2022/2023" }`. Student-to-adviser conversations are matched by department and session. Chat messages sent through REST or Socket.IO are broadcast to authorized conversation rooms.

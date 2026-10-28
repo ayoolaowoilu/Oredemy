@@ -190,11 +190,13 @@ export default function Onboarding() {
                   const file = event.target.files?.[0] ?? null;
                   if (file && !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
                     setError("Choose a JPEG, PNG, or WebP image.");
+                    setProfileImage(null);
                     event.target.value = "";
                     return;
                   }
                   if (file && file.size > 5 * 1024 * 1024) {
                     setError("Choose an image that is 5 MB or smaller.");
+                    setProfileImage(null);
                     event.target.value = "";
                     return;
                   }

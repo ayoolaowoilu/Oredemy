@@ -321,7 +321,7 @@ async function processSlot(lecturer, slot) {
         );
 
         if (questionCount > 0) {
-            const config = await loadAiConfiguration(lecturer.id);
+            const config = await loadAiConfiguration();
             if (!config) throw new Error("AI settings are not configured");
             let lastQuestionId = 0;
             let processedCount = alreadyGroupedIds.size;
