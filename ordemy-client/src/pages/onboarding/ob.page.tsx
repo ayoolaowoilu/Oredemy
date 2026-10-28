@@ -8,6 +8,7 @@ import {
   getAdmissionSessions,
   getCurrentAcademicSession,
 } from "../../utils/level";
+import { compressProfileImage } from "../../utils/compress-image";
 import {
   EditRequest,
   FetchAcademicStructure,
@@ -39,6 +40,7 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [compressingImage, setCompressingImage] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -105,7 +107,7 @@ export default function Onboarding() {
 
   async function saveEnrollment() {
     const token = tokenStorage.get();
-    if (!token || !selectedFaculty || !selectedDepartment) {
+    if (!token || !selectedFaculty || !selectedDepartment || compressingImage) {
       setError("Choose a school, faculty, and department.");
       return;
     }
@@ -185,7 +187,8 @@ export default function Onboarding() {
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
-                onChange={(event) => {
+                disabled={compressingImage || submitting}
+                onChange={async (event) => {
                   const file = event.target.files?.[0] ?? null;
                   if (file && !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
                     setError("Choose a JPEG, PNG, or WebP image.");
@@ -193,22 +196,44 @@ export default function Onboarding() {
                     event.target.value = "";
                     return;
                   }
-                  if (file && file.size > 5 * 1024 * 1024) {
-                    setError("Choose an image that is 5 MB or smaller.");
+                  if (file && file.size > 20 * 1024 * 1024) {
+                    setError("Choose an image that is 20 MB or smaller before compression.");
                     setSelectedImage(null);
                     event.target.value = "";
                     return;
                   }
                   setError("");
-                  setSelectedImage(
-                    file
-                      ? { file, preview: URL.createObjectURL(file) }
-                      : null,
-                  );
+                  if (!file) {
+                    setSelectedImage(null);
+                    return;
+                  }
+                  const input = event.currentTarget;
+                  setCompressingImage(true);
+                  try {
+                    const compressedFile = await compressProfileImage(file);
+                    setSelectedImage({
+                      file: compressedFile,
+                      preview: URL.createObjectURL(compressedFile),
+                    });
+                  } catch (compressionError: unknown) {
+                    setSelectedImage(null);
+                    setError(
+                      compressionError instanceof Error
+                        ? compressionError.message
+                        : "Could not compress this image. Please try another.",
+                    );
+                  } finally {
+                    setCompressingImage(false);
+                    input.value = "";
+                  }
                 }}
                 className="mt-1 block w-full max-w-xs text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-[#2501FF]/10 file:px-3 file:py-2 file:text-xs file:font-bold file:text-[#2501FF] hover:file:bg-[#2501FF]/15"
               />
-              <span className="mt-1 block text-xs text-slate-400">JPEG, PNG or WebP, up to 5 MB</span>
+              <span className="mt-1 block text-xs text-slate-400">
+                {compressingImage
+                  ? "Compressing image…"
+                  : "JPEG, PNG or WebP. Images are compressed to under 1 MB before upload."}
+              </span>
             </label>
           </div>
           <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">
@@ -422,7 +447,7 @@ export default function Onboarding() {
         ) : (
           <button
             type="button"
-            disabled={!canContinue || submitting || loading}
+            disabled={!canContinue || submitting || loading || compressingImage}
             onClick={() => void saveEnrollment()}
             className="rounded-xl bg-[#2501FF] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#1e00d6] disabled:cursor-not-allowed disabled:opacity-40"
           >
