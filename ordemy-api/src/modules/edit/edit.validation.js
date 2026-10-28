@@ -32,6 +32,7 @@ export function UserEditValidation(editData) {
         "name",
         "image",
         "session",
+        "admission_session",
         "faculty_id",
         "department_id",
     ]);
@@ -54,6 +55,15 @@ export function UserEditValidation(editData) {
             editData.values.session.length > 50)
     ) {
         throw new HttpError(400, "session must be a non-empty string of at most 50 characters or null");
+    }
+    if (
+        "admission_session" in editData.values &&
+        editData.values.admission_session !== null &&
+        (typeof editData.values.admission_session !== "string" ||
+            !editData.values.admission_session.trim() ||
+            editData.values.admission_session.length > 50)
+    ) {
+        throw new HttpError(400, "admission_session must be a non-empty string of at most 50 characters or null");
     }
     for (const field of ["faculty_id", "department_id"]) {
         const value = editData.values[field];
