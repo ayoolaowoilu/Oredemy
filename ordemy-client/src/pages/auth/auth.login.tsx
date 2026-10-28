@@ -16,7 +16,7 @@ import {
 import { Input } from "../../components/ui/input";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -45,14 +45,27 @@ export default function Login() {
     setSubmitting(true);
     try {
       const user = await login({ email, password });
+      const expectedRole = role === "adviser" ? "lecturer" : role;
+      if (user.role !== expectedRole) {
+        logout();
+        setError(`This account is not registered as a ${role} account. Select the correct account type and try again.`);
+        return;
+      }
+
       const needsOnboarding =
         user.role === "student" &&
         (!user.faculty_id ||
           !user.department_id ||
           !user.session ||
           !user.admission_session);
+      const adviserNeedsOnboarding =
+        user.role === "lecturer" &&
+        !user.is_verified &&
+        (!user.faculty_id || !user.department_id || !user.session);
       const destination = needsOnboarding
         ? "/onboarding"
+        : adviserNeedsOnboarding
+          ? "/onboarding"
         : user.role === "student" && from === "/"
           ? "/dashboard/student"
           : user.role === "lecturer" && from === "/"

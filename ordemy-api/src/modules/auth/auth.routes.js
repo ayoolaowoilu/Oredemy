@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { login, Register, UserData } from "./auth.controller.js";
+import { AdviserOnboarding, login, Register, UserData } from "./auth.controller.js";
 import { authenticate } from "../../middleware/auth.js";
 
 const router = Router();
@@ -7,5 +7,6 @@ const router = Router();
 router.post("/login",login);
 router.post("/register",Register)
 router.get("/userdata", authenticate, UserData)
+router.post("/adviser-onboarding", authenticate, AdviserOnboarding)
 
 export default router;

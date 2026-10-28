@@ -24,6 +24,9 @@ export function PublicOnlyRoute() {
   const { user, loading } = useAuth();
 
   if (loading) return <p>Loading…</p>;
+  if (user?.role === "lecturer" && user.is_verified) {
+    return <Navigate to="/dashboard/adviser" replace />;
+  }
   if (user) return <Navigate to="/" replace />;
   return <Outlet />;
 }

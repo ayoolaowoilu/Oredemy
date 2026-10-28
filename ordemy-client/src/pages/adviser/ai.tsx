@@ -3,9 +3,11 @@ import { Bot, Check, Clock3, RefreshCw, Send, Sparkles } from "lucide-react";
 import { ApiError } from "../../lib/api";
 import {
   fetchAiRuns,
+  fetchSchedulerLogs,
   sendAiDraft,
   updateAiDraft,
   type AiRun,
+  type SchedulerLog,
 } from "./api";
 import { AdviserCard, AdviserNotice, AdviserPageIntro } from "./shared";
 
@@ -18,6 +20,7 @@ function formatDate(value: string) {
 
 export default function AdviserAi() {
   const [runs, setRuns] = useState<AiRun[]>([]);
+  const [schedulerLogs, setSchedulerLogs] = useState<SchedulerLog[]>([]);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
@@ -27,8 +30,12 @@ export default function AdviserAi() {
   const loadRuns = useCallback(async () => {
     setError("");
     try {
-      const response = await fetchAiRuns();
+      const [response, logResponse] = await Promise.all([
+        fetchAiRuns(),
+        fetchSchedulerLogs(),
+      ]);
       setRuns(response.data);
+      setSchedulerLogs(logResponse.data);
       setDrafts((existing) => {
         const next = { ...existing };
         for (const run of response.data) {
@@ -213,6 +220,32 @@ export default function AdviserAi() {
           ))}
         </div>
       )}
+      <AdviserCard className="mt-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-bold text-slate-950">Scheduler activity</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Durable startup, hourly heartbeat and sleep-recovery events.
+            </p>
+          </div>
+          <Clock3 size={18} className="text-slate-400" />
+        </div>
+        {schedulerLogs.length ? (
+          <div className="mt-4 divide-y divide-slate-100">
+            {schedulerLogs.slice(0, 10).map((log, index) => (
+              <div key={`${log.event_type}-${log.created_at}-${index}`} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{log.event_type.replaceAll("_", " ")}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{log.details}</p>
+                </div>
+                <time className="shrink-0 text-xs text-slate-400">{formatDate(log.created_at)}</time>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-slate-500">The scheduler has not written any activity yet.</p>
+        )}
+      </AdviserCard>
     </>
   );
 }

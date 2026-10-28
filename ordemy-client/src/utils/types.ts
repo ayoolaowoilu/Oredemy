@@ -273,6 +273,10 @@ export interface PendingLecturer {
     email: string;
     faculty_id: number | null;
     department_id: number | null;
+    session?: string | null;
+    school?: string | null;
+    faculty?: string | null;
+    department?: string | null;
     created_at: string;
 }
 

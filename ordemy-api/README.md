@@ -181,6 +181,7 @@ The memory cache resets on restart and is not shared between API instances. Redi
 | `POST` | `/api/auth/register` | Public | Create a student or lecturer account |
 | `POST` | `/api/auth/login` | Public | Log in and receive a JWT |
 | `GET` | `/api/auth/userdata` | Any signed-in user | Get the current user's profile |
+| `POST` | `/api/auth/adviser-onboarding` | Unverified lecturer | Assign the adviser to a department and class session before administrator verification |
 | `POST` | `/api/edit/user` | Any signed-in user | Edit own profile; students can update academic details |
 | `POST` | `/api/query/add` | Signed-in user with faculty and department set | Submit a complaint; student questions also enter the support chat |
 | `DELETE` | `/api/query/delete` | Any signed-in user | Delete own complaint |
@@ -261,6 +262,19 @@ Response has the same `token` and `user` shape as register. Invalid credentials 
 `GET /api/auth/userdata` — requires authentication. No path, query, or body parameters. Returns `200`.
 
 Response fields: `id`, `name`, `email`, `role`, `is_verified`, `session`, `faculty_id`, `department_id`, `faculty`, `department`, `created_at`. Academic IDs, session, faculty, and department can be `null`.
+
+### Select an adviser department and class session
+
+`POST /api/auth/adviser-onboarding` — requires authentication and an unverified lecturer account. Choose the school, faculty, department, and the cohort's admission session from `GET /api/fetch/academic-structure` and the session list shown during onboarding, then send the selected department ID and class session:
+
+```json
+{
+  "department_id": 7,
+  "session": "2022/2023"
+}
+```
+
+The API looks up the department's faculty itself and saves both assignments with the class session; it does not trust a client-supplied faculty ID. Student questions and class chats are matched against this department and session. This does not grant access: an administrator must review and verify the adviser, and cannot verify an account without both a department and session assignment. Verified advisers must ask an administrator to change their assignment.
 
 ## Profile and complaint endpoints
 
@@ -656,7 +670,7 @@ Response shape:
 
 ## Class-representative requests
 
-Only students can submit requests. Their department and session are taken from their own account; these must be assigned before they can submit. A student cannot have another pending request or already-approved request for the same session. Only a verified lecturer assigned to the request's department can review it. At most one representative may be approved per department and session.
+Only students can submit requests. Their department and session are taken from their own account; these must be assigned before they can submit. A student cannot have another pending request or already-approved request for the same session. Only a verified lecturer assigned to the request's department and session can review it. At most one representative may be approved per department and session.
 
 ### Submit request
 
@@ -680,11 +694,11 @@ Response: `{ "data": { "id": 42, "student_id": "<uuid>", "department_id": 2, "se
 
 ### List requests for lecturer review
 
-`GET /api/class-rep/requests` — requires a verified lecturer with an assigned department. No parameters. Returns `{ "data": [...] }` containing pending requests only for the lecturer's department.
+`GET /api/class-rep/requests` — requires a verified lecturer with an assigned department and session. No parameters. Returns `{ "data": [...] }` containing pending requests only for the lecturer's department and session.
 
 ### Approve or reject a request
 
-`PATCH /api/class-rep/requests/:id` — requires a verified lecturer assigned to the request's department.
+`PATCH /api/class-rep/requests/:id` — requires a verified lecturer assigned to the request's department and session.
 
 | Parameter | Required | Type | Meaning |
 | --- | --- | --- | --- |
@@ -864,7 +878,7 @@ Frontend request/response TypeScript definitions are in [`types.ts`](./types.ts)
 
 ## Adviser AI and chat
 
-For an existing database, run [`migrations/20261028_add_adviser_ai.sql`](./migrations/20261028_add_adviser_ai.sql) once before starting the updated API. New databases receive the same tables from `data.sql`.
+For an existing database, run [`migrations/20261028_add_adviser_ai.sql`](./migrations/20261028_add_adviser_ai.sql) once before starting the updated API. If that migration was already applied, also run [`migrations/20261029_scope_adviser_scheduler_logs.sql`](./migrations/20261029_scope_adviser_scheduler_logs.sql) to scope recovery logs to the adviser. New databases receive the complete schema from `data.sql`.
 
 Set `AI_SETTINGS_ENCRYPTION_KEY` in the API environment to a base64-encoded 32-byte key. Generate one locally with:
 
@@ -881,9 +895,10 @@ The adviser endpoints are mounted under `/api/adviser` and require an authentica
 | `GET` | `/api/adviser/dashboard` | Department question totals and pending class-rep requests |
 | `GET` / `PUT` | `/api/adviser/ai-settings` | Read masked settings or save a key/model |
 | `GET` | `/api/adviser/ai-runs` | List scheduler runs and reply drafts |
+| `GET` | `/api/adviser/scheduler-logs` | List recent scheduler startup, heartbeat and recovery logs |
 | `PATCH` | `/api/adviser/ai-runs/:runId/groups/:groupId` | Save an edited draft |
 | `POST` | `/api/adviser/ai-runs/:runId/groups/:groupId/send` | Send a reviewed draft to its students |
 
 The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos`. It writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
 
-Adviser chat uses the existing authenticated Socket.IO endpoint. Verified lecturers can list `/api/chat/class-sessions` and create or open a department group with `POST /api/chat/conversations` using `{ "type": "class", "session": "2025/2026" }`. Chat messages sent through REST or Socket.IO are broadcast to authorized conversation rooms.
+Adviser chat uses the existing authenticated Socket.IO endpoint. Verified lecturers can list `/api/chat/class-sessions` for their assigned session and create or open that department group with `POST /api/chat/conversations` using `{ "type": "class", "session": "2022/2023" }`. Student-to-adviser conversations are matched by department and session. Chat messages sent through REST or Socket.IO are broadcast to authorized conversation rooms.

@@ -186,8 +186,12 @@ CREATE TABLE adviser_ai_groups (
 
 CREATE TABLE adviser_ai_scheduler_logs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    lecturer_id VARCHAR(36) NULL,
     event_type VARCHAR(40) NOT NULL,
     details VARCHAR(1000) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_adviser_scheduler_log_created (created_at)
+    INDEX idx_adviser_scheduler_log_created (created_at),
+    INDEX idx_adviser_scheduler_log_lecturer (lecturer_id, created_at),
+    CONSTRAINT fk_adviser_scheduler_log_lecturer
+        FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE
 );

@@ -101,6 +101,7 @@ export async function FindOrCreateLecturerConversation(connection, userId, stude
            ON lecturer_department.id = lecturer.department_id
          WHERE lecturer.role = 'lecturer'
            AND lecturer.is_verified = TRUE
+           AND lecturer.session = ?
            AND (
                 (? IS NOT NULL AND lecturer.department_id = ?)
                 OR (? IS NOT NULL AND COALESCE(lecturer.faculty_id, lecturer_department.faculty_id) = ?)
@@ -109,8 +110,9 @@ export async function FindOrCreateLecturerConversation(connection, userId, stude
                   lecturer.created_at ASC, lecturer.id ASC
          LIMIT 1`,
         [
+             student.session,
             student.department_id,
-            student.department_id,
+             student.department_id,
             facultyId,
             facultyId,
             student.department_id,
@@ -179,8 +181,8 @@ export async function AuthorizeConversation(conversationId, user) {
                 `SELECT id
                  FROM users
                  WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE
-                   AND department_id = ?`,
-                [currentUser.id, conversation.class_department_id]
+                   AND department_id = ? AND session = ?`,
+                [currentUser.id, conversation.class_department_id, conversation.class_session]
             );
             isClassMember = memberRows.length > 0;
         }
@@ -214,11 +216,14 @@ export async function CreateConversation(userId, type, requestedSession) {
         );
         const student = studentRows[0];
         if (student?.role === "lecturer" && student.is_verified && type === "class") {
-            if (!student.department_id) {
-                throw new HttpError(400, "Assign your lecturer account to a department first");
+            if (!student.department_id || !student.session) {
+                throw new HttpError(400, "Assign your lecturer account to a department and class session first");
             }
             if (typeof requestedSession !== "string" || !requestedSession.trim()) {
                 throw new HttpError(400, "Select a session for the class group chat");
+            }
+            if (requestedSession.trim() !== student.session) {
+                throw new HttpError(403, "You can only create class chats for your assigned session");
             }
             const [cohortRows] = await connection.query(
                 `SELECT id FROM users
@@ -280,7 +285,7 @@ export async function ListClassSessions(user) {
         throw new HttpError(403, "Verified lecturer access required");
     }
     const [lecturerRows] = await pool.query(
-        `SELECT department_id FROM users
+        `SELECT department_id, session FROM users
          WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE`,
         [user.id]
     );
@@ -288,12 +293,15 @@ export async function ListClassSessions(user) {
     if (!departmentId) {
         throw new HttpError(400, "Assign your lecturer account to a department first");
     }
+    if (!lecturerRows[0].session) {
+        throw new HttpError(400, "Assign a class session to your lecturer account first");
+    }
     const [rows] = await pool.query(
         `SELECT DISTINCT session
          FROM users
-         WHERE role = 'student' AND department_id = ? AND session IS NOT NULL
+         WHERE role = 'student' AND department_id = ? AND session = ?
          ORDER BY session DESC`,
-        [departmentId]
+        [departmentId, lecturerRows[0].session]
     );
     return { data: rows.map(({ session }) => session) };
 }
@@ -319,7 +327,7 @@ export async function ListConversations(user) {
         values = [user.id, student.department_id, student.session];
     } else if (user.role === "lecturer" && user.is_verified) {
         const [lecturerRows] = await pool.query(
-            "SELECT department_id FROM users WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE",
+            "SELECT department_id, session FROM users WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE",
             [user.id]
         );
         const lecturer = lecturerRows[0];
@@ -329,10 +337,10 @@ export async function ListConversations(user) {
             OR (
                 conversation.type = 'class'
                 AND conversation.class_department_id = ?
-                AND ? IS NOT NULL
+                AND conversation.class_session = ?
             )
         )`;
-        values = [user.id, lecturer.department_id, lecturer.department_id];
+        values = [user.id, lecturer.department_id, lecturer.session];
     } else if (user.role === "admin") {
         condition = "conversation.type = 'support'";
         values = [];

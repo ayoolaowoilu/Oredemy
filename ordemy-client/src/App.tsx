@@ -30,7 +30,7 @@ export default function App() {
       {/* Terms page: available to everyone, inside or outside the app */}
       <Route path="/terms" element={<Terms />} />
 
-      <Route element={<ProtectedRoute roles={["student"]} />}>
+      <Route element={<ProtectedRoute roles={["student", "lecturer"]} />}>
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/dashboard/student" element={<StudentLayout />}>
           <Route index element={<StudentOverview />} />

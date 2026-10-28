@@ -34,11 +34,11 @@ function getSlotDate(date, hour) {
     };
 }
 
-async function writeSchedulerLog(eventType, details) {
+async function writeSchedulerLog(eventType, details, lecturerId = null) {
     await pool.query(
-        `INSERT INTO adviser_ai_scheduler_logs (event_type, details)
-         VALUES (?, ?)`,
-        [eventType, details]
+        `INSERT INTO adviser_ai_scheduler_logs (lecturer_id, event_type, details)
+         VALUES (?, ?, ?)`,
+        [lecturerId, eventType, details]
     );
 }
 
@@ -47,13 +47,14 @@ async function getDueSlots(lecturerId, now) {
     const currentHour = Number(parts.hour);
     const today = `${parts.year}-${parts.month}-${parts.day}`;
     const [runRows] = await pool.query(
-        `SELECT slot_key FROM adviser_ai_runs
+        `SELECT slot_key, status, started_at, completed_at FROM adviser_ai_runs
          WHERE lecturer_id = ?
-         ORDER BY slot_key DESC LIMIT 1`,
+         ORDER BY slot_key DESC LIMIT 200`,
         [lecturerId]
     );
-    const latestSlot = runRows[0]?.slot_key ?? "";
+    const latestSlot = runRows.find((run) => run.status === "completed")?.slot_key ?? "";
     const slots = [];
+    const dueSlotKeys = new Set();
 
     const latestDate = latestSlot.slice(0, 10);
     const latestDateTime = latestDate
@@ -71,7 +72,8 @@ async function getDueSlots(lecturerId, now) {
     if (daysSinceLatest > 30) {
         await writeSchedulerLog(
             "catchup_limit",
-            `Capped recovery at 30 days after last slot ${latestSlot}`
+            `Capped recovery at 30 days after last slot ${latestSlot}`,
+            lecturerId
         );
     }
 
@@ -89,10 +91,37 @@ async function getDueSlots(lecturerId, now) {
         for (const hour of SCHEDULE_HOURS) {
             if (candidateDate === today && hour > currentHour) continue;
             const slot = getSlotDate(date, hour);
-            if (slot.key > latestSlot) slots.push(slot);
+            if (slot.key > latestSlot) {
+                slots.push(slot);
+                dueSlotKeys.add(slot.key);
+            }
         }
     }
 
+    const staleBefore = now.getTime() - 5 * 60 * 1000;
+    for (const run of runRows) {
+        if (
+            !["running", "failed"].includes(run.status) ||
+            dueSlotKeys.has(run.slot_key)
+        ) {
+            continue;
+        }
+        const retryAfter = run.status === "running"
+            ? new Date(run.started_at).getTime()
+            : new Date(run.completed_at).getTime();
+        if (retryAfter > staleBefore) continue;
+        const [dateKey, timeKey] = run.slot_key.split("T");
+        const slot = getSlotDate(
+            new Date(`${dateKey}T12:00:00Z`),
+            Number(timeKey.slice(0, 2))
+        );
+        if (slot.scheduledAt <= now) {
+            slots.push(slot);
+            dueSlotKeys.add(slot.key);
+        }
+    }
+
+    slots.sort((left, right) => left.key.localeCompare(right.key));
     return slots;
 }
 
@@ -173,7 +202,7 @@ function validateGroups(groups, questions) {
     }
 }
 
-async function countDailyQuestions(departmentId, dateFrom, dateTo) {
+async function countDailyQuestions(departmentId, session, dateFrom, dateTo) {
     const [rows] = await pool.query(
         `SELECT COUNT(DISTINCT query_item.id) AS total
          FROM queries AS query_item
@@ -186,8 +215,9 @@ async function countDailyQuestions(departmentId, dateFrom, dateTo) {
                SELECT id FROM users
                WHERE role = 'lecturer' AND department_id = ?
            )
+           AND query_item.session = ?
            AND query_item.created_at >= ? AND query_item.created_at < ?`,
-        [departmentId, dateFrom, dateTo]
+        [departmentId, session, dateFrom, dateTo]
     );
     return Number(rows[0].total);
 }
@@ -199,12 +229,77 @@ async function processSlot(lecturer, slot) {
          VALUES (?, ?, ?, 'running', CURRENT_TIMESTAMP)`,
         [lecturer.id, lecturer.department_id, slot.key]
     );
-    if (insertResult.affectedRows === 0) return;
+    let runId = insertResult.insertId;
+    if (insertResult.affectedRows === 0) {
+        const [existingRuns] = await pool.query(
+            `SELECT id, status, started_at
+             FROM adviser_ai_runs
+             WHERE lecturer_id = ? AND slot_key = ?
+             LIMIT 1`,
+            [lecturer.id, slot.key]
+        );
+        const existingRun = existingRuns[0];
+        if (!existingRun) return;
+        runId = existingRun.id;
+        let reclaimResult;
+        if (existingRun.status === "running") {
+            if (Date.now() - new Date(existingRun.started_at).getTime() < 5 * 60 * 1000) return;
+            [reclaimResult] = await pool.query(
+                `UPDATE adviser_ai_runs
+                 SET started_at = CURRENT_TIMESTAMP
+                 WHERE id = ? AND status = 'running'
+                   AND started_at <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 5 MINUTE)`,
+                [runId]
+            );
+        } else if (existingRun.status === "failed") {
+            [reclaimResult] = await pool.query(
+                `UPDATE adviser_ai_runs
+                 SET status = 'running', started_at = CURRENT_TIMESTAMP,
+                     completed_at = NULL, error_message = NULL
+                 WHERE id = ? AND status = 'failed'
+                   AND completed_at <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 5 MINUTE)`,
+                [runId]
+            );
+        } else {
+            return;
+        }
+        if (reclaimResult.affectedRows === 0) return;
+        await writeSchedulerLog("run_recovery", `Resuming ${existingRun.status} run ${slot.key}`, lecturer.id);
+    }
 
     try {
-        const [questions] = await pool.query(
-            `SELECT DISTINCT query_item.id, query_item.subject, query_item.query,
-                    query_item.query_type
+        const dailyStart = getSlotDate(new Date(slot.scheduledAt.getTime() + 1), 12).from;
+        const dailyEnd = new Date(dailyStart.getTime() + 24 * 60 * 60 * 1000);
+        const dailyCount = await countDailyQuestions(
+            lecturer.department_id,
+            lecturer.session,
+            dailyStart,
+            dailyEnd
+        );
+        const severity = dailyCount > 100 ? "critical" : "normal";
+        if (severity === "critical") {
+            console.error(
+                `[CRITICAL] Adviser ${lecturer.id} received ${dailyCount} questions today; email alerting is not configured`
+            );
+        }
+
+        const [existingGroupRows] = await pool.query(
+            `SELECT question_ids
+             FROM adviser_ai_groups
+             WHERE run_id = ?`,
+            [runId]
+        );
+        const alreadyGroupedIds = new Set();
+        for (const group of existingGroupRows) {
+            const ids = typeof group.question_ids === "string"
+                ? JSON.parse(group.question_ids)
+                : group.question_ids;
+            if (Array.isArray(ids)) {
+                for (const id of ids) alreadyGroupedIds.add(Number(id));
+            }
+        }
+        const [questionCountRows] = await pool.query(
+            `SELECT COUNT(DISTINCT query_item.id) AS total
              FROM queries AS query_item
              INNER JOIN chat_messages AS question_message
                ON question_message.query_id = query_item.id
@@ -212,59 +307,73 @@ async function processSlot(lecturer, slot) {
                ON conversation.id = question_message.conversation_id
              WHERE conversation.type = 'lecturer'
                AND conversation.lecturer_id = ?
+               AND query_item.session = ?
                AND query_item.created_at >= ?
-               AND query_item.created_at < ?
-               AND NOT EXISTS (
-                   SELECT 1
-                   FROM adviser_ai_groups AS existing_group
-                   INNER JOIN adviser_ai_runs AS existing_run
-                     ON existing_run.id = existing_group.run_id
-                   WHERE JSON_CONTAINS(
-                       existing_group.question_ids,
-                       CAST(query_item.id AS JSON)
-                   )
-                     AND existing_group.status = 'sent'
-               )
-             ORDER BY query_item.created_at ASC, query_item.id ASC
-             LIMIT 500`,
-            [lecturer.id, slot.from, slot.scheduledAt]
+               AND query_item.created_at < ?`,
+            [lecturer.id, lecturer.session, slot.from, slot.scheduledAt]
         );
-        const dailyStart = getSlotDate(new Date(slot.scheduledAt.getTime() + 1), 12).from;
-        const dailyEnd = new Date(dailyStart.getTime() + 24 * 60 * 60 * 1000);
-        const dailyCount = await countDailyQuestions(
-            lecturer.department_id,
-            dailyStart,
-            dailyEnd
-        );
-        const severity = dailyCount > 100 ? "critical" : "normal";
+        const questionCount = Number(questionCountRows[0].total);
         await pool.query(
             `UPDATE adviser_ai_runs
              SET question_count = ?, severity = ?
              WHERE id = ?`,
-            [questions.length, severity, insertResult.insertId]
+            [questionCount, severity, runId]
         );
 
-        if (severity === "critical") {
-            console.error(
-                `[CRITICAL] Adviser ${lecturer.id} received ${dailyCount} questions today; email alerting is not configured`
-            );
-        }
-
-        if (questions.length > 0) {
+        if (questionCount > 0) {
             const config = await loadAiConfiguration(lecturer.id);
             if (!config) throw new Error("AI settings are not configured");
-            const groups = await callGroq(config, questions);
-            for (const group of groups) {
-                await pool.query(
-                    `INSERT INTO adviser_ai_groups
-                     (run_id, title, question_ids, draft_reply, status)
-                     VALUES (?, ?, ?, ?, 'pending')`,
-                    [
-                        insertResult.insertId,
-                        group.title.trim().slice(0, 255),
-                        JSON.stringify(group.question_ids.map(Number)),
-                        group.draft_reply.trim(),
-                    ]
+            let lastQuestionId = 0;
+            let processedCount = alreadyGroupedIds.size;
+            while (true) {
+                const [questions] = await pool.query(
+                    `SELECT DISTINCT query_item.id, query_item.subject, query_item.query,
+                            query_item.query_type
+                     FROM queries AS query_item
+                     INNER JOIN chat_messages AS question_message
+                       ON question_message.query_id = query_item.id
+                     INNER JOIN chat_conversations AS conversation
+                       ON conversation.id = question_message.conversation_id
+                     WHERE conversation.type = 'lecturer'
+                       AND conversation.lecturer_id = ?
+                       AND query_item.session = ?
+                       AND query_item.created_at >= ?
+                       AND query_item.created_at < ?
+                       AND query_item.id > ?
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM adviser_ai_groups AS existing_group
+                           WHERE existing_group.run_id = ?
+                             AND JSON_CONTAINS(
+                               existing_group.question_ids,
+                               CAST(query_item.id AS JSON)
+                           )
+                       )
+                     ORDER BY query_item.id ASC
+                     LIMIT 25`,
+                    [lecturer.id, lecturer.session, slot.from, slot.scheduledAt, lastQuestionId, runId]
+                );
+                if (questions.length === 0) break;
+                lastQuestionId = Number(questions[questions.length - 1].id);
+                processedCount += questions.length;
+                const groups = await callGroq(config, questions);
+                for (const group of groups) {
+                    await pool.query(
+                        `INSERT INTO adviser_ai_groups
+                         (run_id, title, question_ids, draft_reply, status)
+                         VALUES (?, ?, ?, ?, 'pending')`,
+                        [
+                            runId,
+                            group.title.trim().slice(0, 255),
+                            JSON.stringify(group.question_ids.map(Number)),
+                            group.draft_reply.trim(),
+                        ]
+                    );
+                }
+            }
+            if (processedCount !== questionCount) {
+                throw new Error(
+                    `AI batch processed ${processedCount} of ${questionCount} questions`
                 );
             }
         }
@@ -273,17 +382,17 @@ async function processSlot(lecturer, slot) {
             `UPDATE adviser_ai_runs
              SET status = 'completed', completed_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
-            [insertResult.insertId]
+            [runId]
         );
         console.log(
-            `[adviser-ai] ${slot.key}: processed ${questions.length} questions for ${lecturer.id}`
+            `[adviser-ai] ${slot.key}: processed ${questionCount} questions for ${lecturer.id}`
         );
     } catch (error) {
         await pool.query(
             `UPDATE adviser_ai_runs
              SET status = 'failed', error_message = ?, completed_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
-            [String(error.message ?? error).slice(0, 1000), insertResult.insertId]
+            [String(error.message ?? error).slice(0, 1000), runId]
         );
         console.error(`[adviser-ai] ${slot.key} failed for ${lecturer.id}:`, error);
     }
@@ -308,12 +417,13 @@ async function schedulerTick() {
         }
 
         const [lecturers] = await pool.query(
-            `SELECT users.id, users.department_id
+            `SELECT users.id, users.department_id, users.session
              FROM users
              INNER JOIN adviser_ai_settings ON adviser_ai_settings.lecturer_id = users.id
              WHERE users.role = 'lecturer'
                AND users.is_verified = TRUE
-               AND users.department_id IS NOT NULL`
+               AND users.department_id IS NOT NULL
+               AND users.session IS NOT NULL`
         );
         for (const lecturer of lecturers) {
             const slots = await getDueSlots(lecturer.id, now);

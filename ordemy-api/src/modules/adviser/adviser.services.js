@@ -88,6 +88,12 @@ export async function loadAiConfiguration(lecturerId) {
 
 export async function GetAdviserDashboard(lecturerId) {
     const departmentId = await getLecturerDepartment(lecturerId);
+    const [lecturerRows] = await pool.query(
+        "SELECT session FROM users WHERE id = ? AND role = 'lecturer'",
+        [lecturerId]
+    );
+    const session = lecturerRows[0]?.session;
+    if (!session) throw new HttpError(400, "Your lecturer account is not assigned to a class session");
     const [questionRows] = await pool.query(
         `SELECT COUNT(DISTINCT query_item.id) AS total_questions,
                 SUM(query_item.created_at >= CURDATE()) AS today_questions,
@@ -105,22 +111,24 @@ export async function GetAdviserDashboard(lecturerId) {
          FROM queries AS query_item
          INNER JOIN users AS student ON student.id = query_item.user_id
          WHERE student.department_id = ?
+           AND query_item.session = ?
            AND query_item.query_for IN ('Department', 'Faculty')`,
-        [lecturerId, departmentId]
+        [lecturerId, departmentId, session]
     );
     const [requestRows] = await pool.query(
         `SELECT COUNT(*) AS pending_requests
          FROM class_rep_requests
-         WHERE department_id = ? AND status = 'pending'`,
-        [departmentId]
+         WHERE department_id = ? AND session = ? AND status = 'pending'`,
+        [departmentId, session]
     );
     const [criticalRows] = await pool.query(
         `SELECT COUNT(*) AS today_count
          FROM queries AS query_item
          INNER JOIN users AS student ON student.id = query_item.user_id
          WHERE student.department_id = ?
+           AND query_item.session = ?
            AND query_item.created_at >= CURDATE()`,
-        [departmentId]
+        [departmentId, session]
     );
     return {
         stats: {
@@ -168,6 +176,19 @@ export async function ListAiRuns(lecturerId) {
             groups: groups.filter((group) => group.run_id === run.id),
         })),
     };
+}
+
+export async function ListSchedulerLogs(lecturerId) {
+    await getLecturerDepartment(lecturerId);
+    const [rows] = await pool.query(
+        `SELECT event_type, details, created_at
+         FROM adviser_ai_scheduler_logs
+         WHERE lecturer_id = ? OR lecturer_id IS NULL
+         ORDER BY id DESC
+         LIMIT 50`,
+        [lecturerId]
+    );
+    return { data: rows };
 }
 
 function parseId(value, field) {

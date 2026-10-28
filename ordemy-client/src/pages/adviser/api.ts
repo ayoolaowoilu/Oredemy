@@ -1,5 +1,5 @@
-import { io } from "socket.io-client";
 import { apiRequest, tokenStorage } from "../../lib/api";
+import { connectChatSocket } from "../../utils/chat-socket";
 import type {
   ChatConversation,
   ChatMessage,
@@ -45,6 +45,12 @@ export interface AiRun {
   groups: AiGroup[];
 }
 
+export interface SchedulerLog {
+  event_type: string;
+  details: string;
+  created_at: string;
+}
+
 export const fetchAdviserDashboard = () =>
   apiRequest<AdviserDashboard>("/api/adviser/dashboard", {
     token: getToken(),
@@ -72,6 +78,12 @@ export const saveAiSettings = (apiKey: string, model: string) =>
 
 export const fetchAiRuns = () =>
   apiRequest<{ data: AiRun[] }>("/api/adviser/ai-runs", {
+    token: getToken(),
+    cache: "no-store",
+  });
+
+export const fetchSchedulerLogs = () =>
+  apiRequest<{ data: SchedulerLog[] }>("/api/adviser/scheduler-logs", {
     token: getToken(),
     cache: "no-store",
   });
@@ -149,14 +161,5 @@ export const sendAdviserMessage = (
   );
 
 export function connectAdviserSocket() {
-  const token = getToken();
-  const apiUrl = (import.meta.env.VITE_API_URL ?? "http://localhost:8081")
-    .replace(/\/+$/, "")
-    .replace(/\/api$/, "");
-  return io(apiUrl, {
-    auth: { token },
-    transports: ["websocket", "polling"],
-    reconnection: true,
-    reconnectionAttempts: 6,
-  });
+  return connectChatSocket();
 }

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowDown, MessageCircle, RefreshCw, Send } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { ApiError } from "../../lib/api";
+import { connectChatSocket } from "../../utils/chat-socket";
 import type { ChatConversation, ChatMessage } from "../../utils/types";
 import {
   createAdviserConversation,
@@ -19,13 +20,54 @@ export default function StudentChat() {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
   const scrollContainer = useRef<HTMLDivElement>(null);
+  const socketRef = useRef<ReturnType<typeof connectChatSocket> | null>(null);
+  const conversationId = conversation?.id ?? null;
 
   const loadMessages = useCallback(async (conversationId: string) => {
     const response = await fetchConversationMessages(conversationId);
     setMessages(response.data);
   }, []);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const socket = connectChatSocket();
+    socketRef.current = socket;
+    const join = () => socket.emit("chat:join", { conversationId });
+    const onMessage = (message: ChatMessage) => {
+      if (message.conversation_id !== conversationId) return;
+      setMessages((current) =>
+        current.some((existing) => existing.id === message.id)
+          ? current
+          : [...current, message],
+      );
+    };
+    const onConnect = () => {
+      setConnected(true);
+      join();
+    };
+    const onDisconnect = () => setConnected(false);
+    const onConnectError = (connectionError: Error) => {
+      setConnected(false);
+      setError(`Live chat connection failed: ${connectionError.message}`);
+    };
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
+    socket.on("chat:message", onMessage);
+    if (socket.connected) onConnect();
+    return () => {
+      if (socket.connected) socket.emit("chat:leave", { conversationId });
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
+      socket.off("chat:message", onMessage);
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [conversationId]);
 
   useEffect(() => {
     let active = true;
@@ -86,6 +128,28 @@ export default function StudentChat() {
     if (!conversation || !draft.trim()) return;
     setSending(true);
     setError("");
+    const socket = socketRef.current;
+    if (socket?.connected) {
+      socket.emit(
+        "chat:message",
+        { conversationId: conversation.id, body: draft.trim() },
+        (result: { ok: boolean; data?: ChatMessage; error?: { message: string } }) => {
+          setSending(false);
+          const message = result.data;
+          if (!result.ok || !message) {
+            setError(result.error?.message ?? "Your message could not be sent.");
+            return;
+          }
+          setMessages((current) =>
+            current.some((existing) => existing.id === message.id)
+              ? current
+              : [...current, message],
+          );
+          setDraft("");
+        },
+      );
+      return;
+    }
     try {
       await sendConversationMessage(conversation.id, draft.trim());
       setDraft("");
@@ -134,9 +198,9 @@ export default function StudentChat() {
               </p>
             </div>
           </div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
-            Adviser channel
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${connected ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+            <span className={`size-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-400"}`} />
+            {connected ? "Live adviser channel" : "Adviser channel"}
           </span>
         </div>
 

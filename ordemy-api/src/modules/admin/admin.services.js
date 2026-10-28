@@ -129,10 +129,16 @@ export async function deleteAdminResource(resourceName, id) {
 
 export async function listUnverifiedLecturers() {
     const [rows] = await pool.query(
-        `SELECT id, name, email, faculty_id, department_id, created_at
+        `SELECT users.id, users.name, users.email, users.faculty_id,
+                users.session,
+                users.department_id, departments.name AS department,
+                faculties.name AS faculty, schools.name AS school, users.created_at
          FROM users
-         WHERE role = 'lecturer' AND is_verified = 0
-         ORDER BY created_at ASC`
+         LEFT JOIN departments ON departments.id = users.department_id
+         LEFT JOIN faculties ON faculties.id = users.faculty_id
+         LEFT JOIN schools ON schools.id = faculties.school_id
+         WHERE users.role = 'lecturer' AND users.is_verified = 0
+         ORDER BY users.created_at ASC`
     );
     return { data: rows };
 }
@@ -147,16 +153,31 @@ export async function verifyLecturer(id, isVerified) {
     if (typeof isVerified !== "boolean") {
         throw new HttpError(400, "is_verified must be a boolean");
     }
-    const [result] = await pool.query(
-        "UPDATE users SET is_verified = ? WHERE id = ? AND role = 'lecturer'",
-        [isVerified, id]
-    );
-    if (result.affectedRows === 0) {
-        const [rows] = await pool.query(
-            "SELECT id FROM users WHERE id = ? AND role = 'lecturer'",
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [lecturers] = await connection.query(
+            `SELECT id, faculty_id, department_id, session
+             FROM users
+             WHERE id = ? AND role = 'lecturer'
+             FOR UPDATE`,
             [id]
         );
-        if (rows.length === 0) throw new HttpError(404, "Lecturer not found");
+        const lecturer = lecturers[0];
+        if (!lecturer) throw new HttpError(404, "Lecturer not found");
+        if (isVerified && (!lecturer.faculty_id || !lecturer.department_id || !lecturer.session)) {
+            throw new HttpError(400, "Assign this adviser to a department and class session before verifying the account");
+        }
+        await connection.query(
+            "UPDATE users SET is_verified = ? WHERE id = ?",
+            [isVerified, id]
+        );
+        await connection.commit();
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
     }
     return { message: isVerified ? "Lecturer verified" : "Lecturer verification revoked" };
 }

@@ -4,6 +4,7 @@ import { HashPassword , VerifyPassword } from "../../utils/bcrypt.js";
 import { generateToken } from "../../utils/jwt.js";
 import { LoginSchema , RegistrationSchema } from "./auth.validation.js";
 import { v4 as uuidv4 } from "uuid";
+import { HttpError } from "../../utils/http-error.js";
 
 
 export async function RegisterUser(userData) {
@@ -85,4 +86,58 @@ export async function GetUserData(userId) {
             ? null
             : Number(rows[0].calendar_offset),
     };
+}
+
+export async function AssignAdviserDepartment(userId, departmentId, session) {
+    if (!Number.isSafeInteger(departmentId) || departmentId <= 0) {
+        throw new HttpError(400, "department_id must be a positive integer");
+    }
+    if (
+        typeof session !== "string" ||
+        !/^\d{4}\/\d{4}$/.test(session) ||
+        Number(session.slice(5)) !== Number(session.slice(0, 4)) + 1
+    ) {
+        throw new HttpError(400, "Choose a valid class session in YYYY/YYYY format");
+    }
+
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [userRows] = await connection.query(
+            "SELECT role, is_verified FROM users WHERE id = ? FOR UPDATE",
+            [userId]
+        );
+        const user = userRows[0];
+        if (!user || user.role !== "lecturer") {
+            throw new HttpError(403, "Adviser onboarding is available to lecturer accounts only");
+        }
+        if (user.is_verified) {
+            throw new HttpError(403, "Verified adviser assignments can only be changed by an administrator");
+        }
+
+        const [departmentRows] = await connection.query(
+            `SELECT departments.id, departments.faculty_id
+             FROM departments
+             INNER JOIN faculties ON faculties.id = departments.faculty_id
+             WHERE departments.id = ?`,
+            [departmentId]
+        );
+        if (!departmentRows[0]) {
+            throw new HttpError(400, "Choose a valid department");
+        }
+
+        await connection.query(
+            `UPDATE users
+             SET department_id = ?, faculty_id = ?, session = ?
+             WHERE id = ?`,
+            [departmentRows[0].id, departmentRows[0].faculty_id, session, userId]
+        );
+        await connection.commit();
+        return { message: "Department and class session saved. Your account is now awaiting administrator verification." };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 }

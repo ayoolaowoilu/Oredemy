@@ -2,6 +2,7 @@ import {
     GetAdviserDashboard,
     GetAiSettings,
     ListAiRuns,
+    ListSchedulerLogs,
     ReviewAiGroup,
     SaveAiSettings,
     SendAiGroup,
@@ -21,6 +22,10 @@ export async function saveAiSettings(req, res) {
 
 export async function listAiRuns(req, res) {
     return res.status(200).json(await ListAiRuns(req.authUser.id));
+}
+
+export async function listSchedulerLogs(req, res) {
+    return res.status(200).json(await ListSchedulerLogs(req.authUser.id));
 }
 
 export async function reviewAiGroup(req, res) {

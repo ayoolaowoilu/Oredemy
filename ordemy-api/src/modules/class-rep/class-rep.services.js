@@ -61,7 +61,7 @@ export async function SubmitClassRepRequest(studentId, body) {
 
 async function getVerifiedLecturerDepartment(lecturerId) {
     const [rows] = await pool.query(
-        `SELECT department_id, is_verified
+        `SELECT department_id, session, is_verified
          FROM users
          WHERE id = ? AND role = 'lecturer'`,
         [lecturerId]
@@ -73,11 +73,14 @@ async function getVerifiedLecturerDepartment(lecturerId) {
     if (!rows[0].department_id) {
         throw new HttpError(400, "Your lecturer account is not assigned to a department");
     }
-    return rows[0].department_id;
+    if (!rows[0].session) {
+        throw new HttpError(400, "Your lecturer account is not assigned to a class session");
+    }
+    return { departmentId: rows[0].department_id, session: rows[0].session };
 }
 
 export async function ListClassRepRequests(lecturerId) {
-    const departmentId = await getVerifiedLecturerDepartment(lecturerId);
+    const { departmentId, session } = await getVerifiedLecturerDepartment(lecturerId);
     const [rows] = await pool.query(
         `SELECT requests.id, requests.student_id, students.name AS student_name,
                 requests.department_id, departments.name AS department,
@@ -85,9 +88,10 @@ export async function ListClassRepRequests(lecturerId) {
          FROM class_rep_requests AS requests
          INNER JOIN users AS students ON students.id = requests.student_id
          INNER JOIN departments ON departments.id = requests.department_id
-         WHERE requests.department_id = ? AND requests.status = 'pending'
+         WHERE requests.department_id = ? AND requests.session = ?
+           AND requests.status = 'pending'
          ORDER BY requests.created_at ASC, requests.id ASC`,
-        [departmentId]
+        [departmentId, session]
     );
     return { data: rows };
 }
@@ -107,7 +111,7 @@ export async function ListMyClassRepRequests(studentId) {
 }
 
 export async function ReviewClassRepRequest(lecturerId, requestId, body) {
-    const departmentId = await getVerifiedLecturerDepartment(lecturerId);
+    const { departmentId, session } = await getVerifiedLecturerDepartment(lecturerId);
     const { status, note } = ValidateClassRepDecision(body);
     const parsedId = Number(requestId);
     if (!Number.isSafeInteger(parsedId) || parsedId <= 0) {
@@ -120,9 +124,9 @@ export async function ReviewClassRepRequest(lecturerId, requestId, body) {
         const [requestRows] = await connection.query(
             `SELECT id, session, student_id
              FROM class_rep_requests
-             WHERE id = ? AND department_id = ? AND status = 'pending'
+             WHERE id = ? AND department_id = ? AND session = ? AND status = 'pending'
              FOR UPDATE`,
-            [parsedId, departmentId]
+            [parsedId, departmentId, session]
         );
         const request = requestRows[0];
         if (!request) throw new HttpError(404, "Pending class-representative request not found");

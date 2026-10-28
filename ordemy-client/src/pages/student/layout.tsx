@@ -29,16 +29,9 @@ export default function StudentLayout() {
     <div className="student-dashboard min-h-screen bg-[#f7f8fc] text-slate-900">
       <div className="mx-auto flex min-h-screen max-w-[1600px]">
         <aside className="sticky top-0 hidden h-screen w-[250px] shrink-0 flex-col border-r border-slate-200 bg-white px-5 py-6 lg:flex">
-          <NavLink to="/dashboard/student" className="flex items-center gap-3 px-2">
-            <span className="grid size-10 place-items-center rounded-xl bg-[#2501FF] text-sm font-black text-white">
-              O
-            </span>
-            <span>
-              <span className="block text-lg font-extrabold tracking-tight text-slate-950">
-                Oredemy
-              </span>
-              <span className="block text-xs text-slate-400">Student space</span>
-            </span>
+          <NavLink to="/dashboard/student" className="flex flex-col items-start gap-1 px-2">
+            <img src="/ordemylogo.svg" alt="Oredemy" className="h-auto w-40 object-contain" />
+            <span className="text-xs text-slate-400">Student space</span>
           </NavLink>
 
           <p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
@@ -92,11 +85,8 @@ export default function StudentLayout() {
           <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3 sm:px-7 lg:px-10">
             <div className="mx-auto flex max-w-[1260px] items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <NavLink
-                  to="/dashboard/student"
-                  className="grid size-9 place-items-center rounded-xl bg-[#2501FF] text-sm font-black text-white lg:hidden"
-                >
-                  O
+                <NavLink to="/dashboard/student" className="lg:hidden">
+                  <img src="/ordemylogo.svg" alt="Oredemy home" className="h-auto w-32 object-contain" />
                 </NavLink>
                 <div>
                   <p className="text-sm font-bold text-slate-900">

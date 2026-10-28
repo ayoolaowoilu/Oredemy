@@ -20,17 +20,20 @@ void startAdviserBatchScheduler().catch((error) => {
   console.error("[adviser-ai] Scheduler could not start:", error);
 });
 
-process.on("SIGINT", async () => {
-  await stopAdviserBatchScheduler();
-  io.close();
-  httpServer.close(() => process.exit(0));
-});
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    await stopAdviserBatchScheduler();
+  } catch (error) {
+    console.error("[adviser-ai] Scheduler shutdown logging failed:", error);
+  }
+  io.close(() => process.exit(0));
+}
 
-process.on("SIGTERM", async () => {
-  await stopAdviserBatchScheduler();
-  io.close();
-  httpServer.close(() => process.exit(0));
-});
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
 
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

@@ -12,6 +12,17 @@ export const EditRequest = (
     body: { editData },
   });
 
+export const SaveAdviserDepartment = (
+  departmentId: number,
+  session: string,
+  token: string,
+) =>
+  apiRequest<ApiMessage>("/api/auth/adviser-onboarding", {
+    method: "POST",
+    token,
+    body: { department_id: departmentId, session },
+  });
+
 export const FetchAcademicStructure = async () => {
   const response = await apiRequest<{ data: AcademicSchool[] }>(
     "/api/fetch/academic-structure",
