@@ -1,6 +1,8 @@
 const API_URL = (
   import.meta.env.VITE_API_URL ?? "http://localhost:8081"
-).replace(/\/+$/, "");
+)
+  .replace(/\/+$/, "")
+  .replace(/\/api$/, "");
 const TOKEN_KEY = "ordemy_token";
 
 export const tokenStorage = {
