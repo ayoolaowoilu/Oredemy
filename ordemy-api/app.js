@@ -7,12 +7,10 @@ import fetchRoutes from "./src/modules/fetch/fetch.routes.js";
 import classRepRoutes from "./src/modules/class-rep/class-rep.routes.js";
 import chatRoutes from "./src/modules/chat/chat.routes.js";
 import { invalidateCacheOnMutation } from "./src/middleware/response-cache.js";
-import cors from "cors"
 const app = express();
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://your-frontend.com",
 ];
 
 app.use((req, res, next) => {
