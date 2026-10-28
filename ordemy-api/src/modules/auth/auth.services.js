@@ -94,8 +94,8 @@ export async function SaveProfileImage(userId, imageBuffer, contentType) {
     if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
         throw new HttpError(400, "Select an image to upload");
     }
-    if (imageBuffer.length > 5 * 1024 * 1024) {
-        throw new HttpError(413, "Profile images must be 5 MB or smaller");
+    if (imageBuffer.length > 1024 * 1024) {
+        throw new HttpError(413, "Profile images must be 1 MB or smaller");
     }
     if (!allowedTypes.has(contentType)) {
         throw new HttpError(400, "Profile image must be JPEG, PNG, or WebP");

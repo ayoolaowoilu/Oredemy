@@ -23,8 +23,12 @@ export const SaveAdviserDepartment = (
     body: { department_id: departmentId, session },
   });
 
-export const UploadProfileImage = (image: File, token: string) =>
-  apiUpload<{ image: string }>("/api/auth/profile-image", image, token);
+export const UploadProfileImage = (image: File, token: string) => {
+  if (image.size > 1024 * 1024) {
+    throw new ApiError("Profile images must be compressed to 1 MB or smaller.", 413);
+  }
+  return apiUpload<{ image: string }>("/api/auth/profile-image", image, token);
+};
 
 export const FetchAcademicStructure = async () => {
   const response = await apiRequest<{ data: AcademicSchool[] }>(
