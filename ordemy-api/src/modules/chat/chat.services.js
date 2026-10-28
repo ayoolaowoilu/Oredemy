@@ -247,29 +247,6 @@ export async function CreateConversation(userId, type, requestedSession) {
             return { data: await LoadConversation(conversationId) };
         }
 
-        export async function ListClassSessions(user) {
-            if (user.role !== "lecturer" || !user.is_verified) {
-                throw new HttpError(403, "Verified lecturer access required");
-            }
-            const [lecturerRows] = await pool.query(
-                `SELECT department_id FROM users
-                 WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE`,
-                [user.id]
-            );
-            const departmentId = lecturerRows[0]?.department_id;
-            if (!departmentId) {
-                throw new HttpError(400, "Assign your lecturer account to a department first");
-            }
-            const [rows] = await pool.query(
-                `SELECT DISTINCT session
-                 FROM users
-                 WHERE role = 'student' AND department_id = ? AND session IS NOT NULL
-                 ORDER BY session DESC`,
-                [departmentId]
-            );
-            return { data: rows.map(({ session }) => session) };
-        }
-
         if (type === "class") {
             if (!student.department_id || !student.session) {
                 throw new HttpError(400, "Assign your department and academic session before joining the class chat");
@@ -296,6 +273,29 @@ export async function CreateConversation(userId, type, requestedSession) {
     } finally {
         connection.release();
     }
+}
+
+export async function ListClassSessions(user) {
+    if (user.role !== "lecturer" || !user.is_verified) {
+        throw new HttpError(403, "Verified lecturer access required");
+    }
+    const [lecturerRows] = await pool.query(
+        `SELECT department_id FROM users
+         WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE`,
+        [user.id]
+    );
+    const departmentId = lecturerRows[0]?.department_id;
+    if (!departmentId) {
+        throw new HttpError(400, "Assign your lecturer account to a department first");
+    }
+    const [rows] = await pool.query(
+        `SELECT DISTINCT session
+         FROM users
+         WHERE role = 'student' AND department_id = ? AND session IS NOT NULL
+         ORDER BY session DESC`,
+        [departmentId]
+    );
+    return { data: rows.map(({ session }) => session) };
 }
 
 export async function ListConversations(user) {

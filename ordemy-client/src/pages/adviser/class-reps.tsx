@@ -32,13 +32,19 @@ export default function AdviserClassReps() {
   }, []);
 
   useEffect(() => {
-    void loadRequests();
+    async function initialize() {
+      await loadRequests();
+    }
+    void initialize();
   }, [loadRequests]);
 
   async function decide(id: number, status: "approved" | "rejected") {
-    const note = status === "rejected"
-      ? window.prompt("Optional note for the student:") ?? undefined
-      : undefined;
+    let note: string | undefined;
+    if (status === "rejected") {
+      const enteredNote = window.prompt("Optional note for the student:");
+      if (enteredNote === null) return;
+      note = enteredNote;
+    }
     setBusy(id);
     setError("");
     setNotice("");

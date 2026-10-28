@@ -43,8 +43,8 @@ export default function AdviserChat() {
   const [notice, setNotice] = useState("");
   const socketRef = useRef<ReturnType<typeof connectAdviserSocket> | null>(null);
   const scrollContainer = useRef<HTMLDivElement>(null);
-  const selectedIdRef = useRef<string | null>(selected?.id ?? null);
-  selectedIdRef.current = selected?.id ?? null;
+  const selectedIdRef = useRef<string | null>(null);
+  const selectedConversationId = selected?.id ?? null;
 
   useEffect(() => {
     let active = true;
@@ -119,26 +119,28 @@ export default function AdviserChat() {
   }, []);
 
   useEffect(() => {
+    selectedIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
+
+  useEffect(() => {
     const socket = socketRef.current;
-    if (!selected || !socket) return;
-    const join = () => socket.emit("chat:join", { conversationId: selected.id });
+    if (!selectedConversationId || !socket) return;
+    const conversationId = selectedConversationId;
+    const join = () => socket.emit("chat:join", { conversationId });
     if (socket.connected) join();
     else socket.once("connect", join);
     return () => {
       socket.off("connect", join);
-      if (socket.connected) socket.emit("chat:leave", { conversationId: selected.id });
+      if (socket.connected) socket.emit("chat:leave", { conversationId });
     };
-  }, [selected?.id, connected]);
+  }, [selectedConversationId, connected]);
 
   useEffect(() => {
     let active = true;
-    if (!selected) {
-      setMessages([]);
-      return () => {
-        active = false;
-      };
-    }
-    fetchAdviserMessages(selected.id)
+    if (!selectedConversationId) return () => {
+      active = false;
+    };
+    fetchAdviserMessages(selectedConversationId)
       .then((response) => {
         if (active) setMessages(response.data);
       })
@@ -154,7 +156,7 @@ export default function AdviserChat() {
     return () => {
       active = false;
     };
-  }, [selected?.id]);
+  }, [selectedConversationId]);
 
   useEffect(() => {
     if (scrollContainer.current) {
@@ -172,6 +174,7 @@ export default function AdviserChat() {
         response.data,
         ...current.filter((item) => item.id !== response.data.id),
       ]);
+      setMessages([]);
       setSelected(response.data);
       setNotice(`Class group chat opened for ${session}.`);
     } catch (createError: unknown) {
@@ -267,7 +270,10 @@ export default function AdviserChat() {
                 <button
                   type="button"
                   key={item.id}
-                  onClick={() => setSelected(item)}
+                  onClick={() => {
+                    setMessages([]);
+                    setSelected(item);
+                  }}
                   className={`min-w-56 rounded-xl p-3 text-left transition-colors lg:min-w-0 ${selected?.id === item.id ? "bg-[#2501FF]/[0.07]" : "hover:bg-slate-50"}`}
                 >
                   <span className="flex items-center gap-2">

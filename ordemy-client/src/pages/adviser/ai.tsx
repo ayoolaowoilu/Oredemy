@@ -50,7 +50,10 @@ export default function AdviserAi() {
   }, []);
 
   useEffect(() => {
-    void loadRuns();
+    async function initialize() {
+      await loadRuns();
+    }
+    void initialize();
   }, [loadRuns]);
 
   async function saveDraft(runId: number, groupId: number) {
