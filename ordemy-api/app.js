@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import authRoutes from "./src/modules/auth/auth.routes.js";
 import editRoutes from "./src/modules/edit/edit.routes.js";
@@ -9,21 +10,25 @@ import chatRoutes from "./src/modules/chat/chat.routes.js";
 import { invalidateCacheOnMutation } from "./src/middleware/response-cache.js";
 const app = express();
 
-const allowedOrigins = [
-  "http://localhost:5173",
-];
+const allowedOrigins = process.env.CLIENT_ORIGIN
+  ? process.env.CLIENT_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
+  : ["http://localhost:5173", "http://127.0.0.1:5173"];
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
+  const allowAll = allowedOrigins.includes("*");
+  const allowed = allowAll || (origin && allowedOrigins.includes(origin));
 
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
-    res.setHeader("Access-Control-Allow-Credentials", "true");
+  if (allowed) {
+    res.setHeader("Access-Control-Allow-Origin", allowAll ? "*" : origin);
+    if (!allowAll) {
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
   }
 
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-token");
 
   // answer preflight immediately
   if (req.method === "OPTIONS") {
