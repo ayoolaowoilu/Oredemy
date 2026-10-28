@@ -56,6 +56,24 @@ export interface UserProfile extends AuthUser {
     created_at: string;
 }
 
+export interface AcademicDepartment {
+    id: number;
+    name: string;
+}
+
+export interface AcademicFaculty {
+    id: number;
+    name: string;
+    departments: AcademicDepartment[];
+}
+
+export interface AcademicSchool {
+    id: number;
+    name: string;
+    calendar_offset: number;
+    faculties: AcademicFaculty[];
+}
+
 export interface EditUserRequest {
     editData: {
         change: string;

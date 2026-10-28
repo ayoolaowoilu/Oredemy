@@ -31,8 +31,8 @@ export default function Register() {
 
     setSubmitting(true);
     try {
-      await register({ name: trimmedName, email, password, role });
-      navigate("/", { replace: true });
+      const user = await register({ name: trimmedName, email, password, role });
+      navigate(user.role === "student" ? "/onboarding" : "/", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
