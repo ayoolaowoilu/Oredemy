@@ -50,6 +50,7 @@ export interface LoginRequest {
 export interface UserProfile extends AuthUser {
     session: string | null;
     admission_session: string | null;
+    calendar_offset: number | null;
     faculty_id: number | null;
     department_id: number | null;
     faculty: string | null;
@@ -116,6 +117,22 @@ export interface AddQueryResponse {
     message: string;
 }
 
+export interface StudentDashboardResponse {
+    stats: {
+        totalQueries: number;
+        queriesWithReply: number;
+        awaitingReply: number;
+    };
+    recentQueries: Array<{
+        id: number;
+        subject: string;
+        query_type: QueryType;
+        session: string;
+        created_at: string;
+        has_reply: boolean;
+    }>;
+}
+
 export type ChatConversationType = "support" | "lecturer" | "class";
 
 export interface ChatConversation {
@@ -126,7 +143,9 @@ export interface ChatConversation {
     class_department_id?: number | null;
     class_session?: string | null;
     student_name?: string;
+    student_image?: string | null;
     lecturer_name?: string | null;
+    lecturer_image?: string | null;
     class_department?: string | null;
     created_at: string;
     updated_at: string;
@@ -139,6 +158,7 @@ export interface ChatMessage {
     conversation_id: string;
     sender_id: string;
     sender_name: string;
+    sender_image?: string | null;
     query_id: number | null;
     body: string;
     created_at: string;
@@ -256,6 +276,10 @@ export interface PendingLecturer {
     email: string;
     faculty_id: number | null;
     department_id: number | null;
+    session?: string | null;
+    school?: string | null;
+    faculty?: string | null;
+    department?: string | null;
     created_at: string;
 }
 

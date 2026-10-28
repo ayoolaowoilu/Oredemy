@@ -4,6 +4,8 @@ import { HashPassword , VerifyPassword } from "../../utils/bcrypt.js";
 import { generateToken } from "../../utils/jwt.js";
 import { LoginSchema , RegistrationSchema } from "./auth.validation.js";
 import { v4 as uuidv4 } from "uuid";
+import { HttpError } from "../../utils/http-error.js";
+import { createHash } from "node:crypto";
 
 
 export async function RegisterUser(userData) {
@@ -64,17 +66,130 @@ export async function LoginUser(userData) {
 
 export async function GetUserData(userId) {
     const [rows] = await pool.query(
-        `SELECT users.id, users.name, users.email, users.role,
+        `SELECT users.id, users.name, users.email, users.role, users.image,
                 users.is_verified, users.session, users.admission_session,
                 users.faculty_id, users.department_id,
                 faculties.name AS faculty, departments.name AS department,
+                schools.calendar_offset,
                 users.created_at
          FROM users
          LEFT JOIN faculties ON faculties.id = users.faculty_id
+         LEFT JOIN schools ON schools.id = faculties.school_id
          LEFT JOIN departments ON departments.id = users.department_id
          WHERE users.id = ?`,
         [userId]
     );
     if (!rows[0]) return undefined;
-    return { ...rows[0], is_verified: Boolean(rows[0].is_verified) };
+    return {
+        ...rows[0],
+        is_verified: Boolean(rows[0].is_verified),
+        calendar_offset: rows[0].calendar_offset === null
+            ? null
+            : Number(rows[0].calendar_offset),
+    };
+}
+
+export async function SaveProfileImage(userId, imageBuffer, contentType) {
+    const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+    if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
+        throw new HttpError(400, "Select an image to upload");
+    }
+    if (imageBuffer.length > 5 * 1024 * 1024) {
+        throw new HttpError(413, "Profile images must be 5 MB or smaller");
+    }
+    if (!allowedTypes.has(contentType)) {
+        throw new HttpError(400, "Profile image must be JPEG, PNG, or WebP");
+    }
+
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+    if (!cloudName || !apiKey || !apiSecret) {
+        throw new HttpError(503, "Profile image uploads are not configured on the server");
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(cloudName)) {
+        throw new HttpError(500, "Cloudinary configuration is invalid");
+    }
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const folder = "ordemy/profiles";
+    const signature = createHash("sha1")
+        .update(`folder=${folder}&timestamp=${timestamp}${apiSecret}`)
+        .digest("hex");
+    const formData = new FormData();
+    formData.append("file", new Blob([imageBuffer], { type: contentType }), "profile-image");
+    formData.append("api_key", apiKey);
+    formData.append("timestamp", String(timestamp));
+    formData.append("folder", folder);
+    formData.append("signature", signature);
+
+    const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        {
+            method: "POST",
+            body: formData,
+            signal: AbortSignal.timeout(30_000),
+        }
+    );
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || typeof result.secure_url !== "string") {
+        throw new HttpError(502, "Cloudinary could not upload the profile image");
+    }
+
+    await pool.query("UPDATE users SET image = ? WHERE id = ?", [result.secure_url, userId]);
+    return { image: result.secure_url };
+}
+
+export async function AssignAdviserDepartment(userId, departmentId, session) {
+    if (!Number.isSafeInteger(departmentId) || departmentId <= 0) {
+        throw new HttpError(400, "department_id must be a positive integer");
+    }
+    if (
+        typeof session !== "string" ||
+        !/^\d{4}\/\d{4}$/.test(session) ||
+        Number(session.slice(5)) !== Number(session.slice(0, 4)) + 1
+    ) {
+        throw new HttpError(400, "Choose a valid class session in YYYY/YYYY format");
+    }
+
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [userRows] = await connection.query(
+            "SELECT role, is_verified FROM users WHERE id = ? FOR UPDATE",
+            [userId]
+        );
+        const user = userRows[0];
+        if (!user || user.role !== "lecturer") {
+            throw new HttpError(403, "Adviser onboarding is available to lecturer accounts only");
+        }
+        if (user.is_verified) {
+            throw new HttpError(403, "Verified adviser assignments can only be changed by an administrator");
+        }
+
+        const [departmentRows] = await connection.query(
+            `SELECT departments.id, departments.faculty_id
+             FROM departments
+             INNER JOIN faculties ON faculties.id = departments.faculty_id
+             WHERE departments.id = ?`,
+            [departmentId]
+        );
+        if (!departmentRows[0]) {
+            throw new HttpError(400, "Choose a valid department");
+        }
+
+        await connection.query(
+            `UPDATE users
+             SET department_id = ?, faculty_id = ?, session = ?
+             WHERE id = ?`,
+            [departmentRows[0].id, departmentRows[0].faculty_id, session, userId]
+        );
+        await connection.commit();
+        return { message: "Department and class session saved. Your account is now awaiting administrator verification." };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 }

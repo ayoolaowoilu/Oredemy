@@ -1,5 +1,5 @@
 import pool from "../../config/database.js";
-import { FindOrCreateSupportConversation } from "../chat/chat.services.js";
+import { FindOrCreateLecturerConversation } from "../chat/chat.services.js";
 import { ValidateDeleteQuery, ValidateQuery } from "./queries.validation.js";
 import { HttpError } from "../../utils/http-error.js";
 
@@ -37,7 +37,11 @@ export async function SubmitQuery(queryData, userId) {
 
         let chatConversationId;
         if (user.role === "student") {
-            chatConversationId = await FindOrCreateSupportConversation(connection, userId);
+            chatConversationId = await FindOrCreateLecturerConversation(
+                connection,
+                userId,
+                user
+            );
             await connection.query(
                 `INSERT INTO chat_messages (conversation_id, sender_id, query_id, body)
                  VALUES (?, ?, ?, ?)`,
@@ -98,14 +102,15 @@ export async function GetMyDashboard(userId, role) {
                         WHERE question_message.query_id = queries.id
                           AND question_message.sender_id = queries.user_id
                           AND conversation.student_id = queries.user_id
-                          AND conversation.type = 'support'
+                          AND conversation.type = 'lecturer'
                           AND EXISTS (
                               SELECT 1
                               FROM chat_messages AS reply
                               INNER JOIN users AS responder ON responder.id = reply.sender_id
                               WHERE reply.conversation_id = conversation.id
                                 AND reply.id > question_message.id
-                                AND responder.role = 'admin'
+                                AND responder.role = 'lecturer'
+                                AND responder.id = conversation.lecturer_id
                           )
                     )
                 ), 0) AS queries_with_reply
@@ -125,14 +130,15 @@ export async function GetMyDashboard(userId, role) {
                     WHERE question_message.query_id = queries.id
                       AND question_message.sender_id = queries.user_id
                       AND conversation.student_id = queries.user_id
-                      AND conversation.type = 'support'
+                      AND conversation.type = 'lecturer'
                       AND EXISTS (
                           SELECT 1
                           FROM chat_messages AS reply
                           INNER JOIN users AS responder ON responder.id = reply.sender_id
                           WHERE reply.conversation_id = conversation.id
                             AND reply.id > question_message.id
-                            AND responder.role = 'admin'
+                            AND responder.role = 'lecturer'
+                            AND responder.id = conversation.lecturer_id
                       )
                 ) AS has_reply
          FROM queries
@@ -151,6 +157,47 @@ export async function GetMyDashboard(userId, role) {
             awaitingReply: totalQueries - queriesWithReply,
         },
         recentQueries: recentQueries.map((query) => ({
+            ...query,
+            has_reply: Boolean(query.has_reply),
+        })),
+    };
+}
+
+export async function GetMyQueries(userId, role) {
+    if (role !== "student") {
+        throw new HttpError(403, "Student questions are available to students only");
+    }
+
+    const [rows] = await pool.query(
+        `SELECT queries.id, queries.subject, queries.query, queries.query_type,
+                queries.query_for, queries.session, queries.created_at,
+                EXISTS (
+                    SELECT 1
+                    FROM chat_messages AS question_message
+                    INNER JOIN chat_conversations AS conversation
+                      ON conversation.id = question_message.conversation_id
+                    WHERE question_message.query_id = queries.id
+                      AND question_message.sender_id = queries.user_id
+                      AND conversation.student_id = queries.user_id
+                      AND conversation.type = 'lecturer'
+                      AND EXISTS (
+                          SELECT 1
+                          FROM chat_messages AS reply
+                          INNER JOIN users AS responder ON responder.id = reply.sender_id
+                          WHERE reply.conversation_id = conversation.id
+                            AND reply.id > question_message.id
+                            AND responder.role = 'lecturer'
+                            AND responder.id = conversation.lecturer_id
+                      )
+                ) AS has_reply
+         FROM queries
+         WHERE queries.user_id = ?
+         ORDER BY queries.created_at DESC, queries.id DESC
+         LIMIT 100`,
+        [userId]
+    );
+    return {
+        data: rows.map((query) => ({
             ...query,
             has_reply: Boolean(query.has_reply),
         })),

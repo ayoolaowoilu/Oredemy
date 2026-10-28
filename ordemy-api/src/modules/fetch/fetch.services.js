@@ -49,7 +49,7 @@ export async function FetchAcademicStructure() {
 export async function FetchLecturerQuestions(query, lecturerId) {
     const { session, scope, page, limit, queryTypes, from, to } = ValidateQuestionFetch(query);
     const [lecturers] = await pool.query(
-        "SELECT faculty_id, department_id, is_verified FROM users WHERE id = ? AND role = 'lecturer'",
+        "SELECT faculty_id, department_id, session, is_verified FROM users WHERE id = ? AND role = 'lecturer'",
         [lecturerId]
     );
     const lecturer = lecturers[0];
@@ -64,6 +64,12 @@ export async function FetchLecturerQuestions(query, lecturerId) {
     }
     if (scope === "faculty" && !lecturer.faculty_id) {
         throw new HttpError(400, "Your lecturer account is not assigned to a faculty");
+    }
+    if (!lecturer.session) {
+        throw new HttpError(400, "Your lecturer account is not assigned to a class session");
+    }
+    if (session !== lecturer.session) {
+        throw new HttpError(403, `Your adviser account is assigned to session ${lecturer.session}`);
     }
 
     const scopeCondition = scope === "department"

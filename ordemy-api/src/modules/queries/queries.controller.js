@@ -1,4 +1,4 @@
-import { DeleteQuery, GetMyDashboard, SubmitQuery } from "./queries.services.js";
+import { DeleteQuery, GetMyDashboard, GetMyQueries, SubmitQuery } from "./queries.services.js";
 
 
 export async function AddQuery(req, res) {
@@ -13,5 +13,10 @@ export async function deleteQuery(req, res) {
 
 export async function getMyDashboard(req, res) {
     const data = await GetMyDashboard(req.authUser.id, req.authUser.role);
+    return res.status(200).json(data);
+}
+
+export async function getMyQueries(req, res) {
+    const data = await GetMyQueries(req.authUser.id, req.authUser.role);
     return res.status(200).json(data);
 }

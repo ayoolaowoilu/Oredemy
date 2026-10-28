@@ -71,6 +71,77 @@ async function FindOrCreateClassConversation(connection, departmentId, session) 
     return conversationId;
 }
 
+export async function FindOrCreateLecturerConversation(connection, userId, student) {
+    const [existingConversationRows] = await connection.query(
+        `SELECT id
+         FROM chat_conversations
+         WHERE student_id = ? AND type = 'lecturer'
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [userId]
+    );
+    if (existingConversationRows[0]) return existingConversationRows[0].id;
+
+    const facultyId = student.faculty_id ??
+        (student.department_id
+            ? (await connection.query(
+                "SELECT faculty_id FROM departments WHERE id = ?",
+                [student.department_id]
+            ))[0][0]?.faculty_id
+            : null);
+    if (!student.department_id && !facultyId) {
+        throw new HttpError(400, "Assign your department or faculty before starting a lecturer chat");
+    }
+
+    const [lecturerRows] = await connection.query(
+        `SELECT lecturer.id
+         FROM users AS lecturer
+         LEFT JOIN departments AS lecturer_department
+           ON lecturer_department.id = lecturer.department_id
+         WHERE lecturer.role = 'lecturer'
+           AND lecturer.is_verified = TRUE
+           AND lecturer.session = ?
+           AND (
+                (? IS NOT NULL AND lecturer.department_id = ?)
+                OR (? IS NOT NULL AND COALESCE(lecturer.faculty_id, lecturer_department.faculty_id) = ?)
+           )
+         ORDER BY (lecturer.department_id = ?) DESC,
+                  lecturer.created_at ASC, lecturer.id ASC
+         LIMIT 1`,
+        [
+             student.session,
+            student.department_id,
+             student.department_id,
+            facultyId,
+            facultyId,
+            student.department_id,
+        ]
+    );
+    const lecturer = lecturerRows[0];
+    if (!lecturer) {
+        throw new HttpError(404, "No verified lecturer is available for your department or faculty");
+    }
+
+    const [existingRows] = await connection.query(
+        `SELECT id
+         FROM chat_conversations
+         WHERE student_id = ? AND lecturer_id = ? AND type = 'lecturer'
+         LIMIT 1
+         FOR UPDATE`,
+        [userId, lecturer.id]
+    );
+    const conversationId = existingRows[0]?.id ?? uuidv4();
+    if (!existingRows[0]) {
+        await connection.query(
+            `INSERT INTO chat_conversations (id, type, student_id, lecturer_id)
+             VALUES (?, 'lecturer', ?, ?)`,
+            [conversationId, userId, lecturer.id]
+        );
+    }
+    return conversationId;
+}
+
 async function LoadConversation(conversationId) {
     ValidateConversationId(conversationId);
     const [rows] = await pool.query(
@@ -110,8 +181,8 @@ export async function AuthorizeConversation(conversationId, user) {
                 `SELECT id
                  FROM users
                  WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE
-                   AND department_id = ?`,
-                [currentUser.id, conversation.class_department_id]
+                   AND department_id = ? AND session = ?`,
+                [currentUser.id, conversation.class_department_id, conversation.class_session]
             );
             isClassMember = memberRows.length > 0;
         }
@@ -128,7 +199,7 @@ export async function AuthorizeConversation(conversationId, user) {
     return conversation;
 }
 
-export async function CreateConversation(userId, type) {
+export async function CreateConversation(userId, type, requestedSession) {
     if (!["support", "lecturer", "class"].includes(type)) {
         throw new HttpError(400, "Conversation type must be support, lecturer, or class");
     }
@@ -137,13 +208,40 @@ export async function CreateConversation(userId, type) {
     try {
         await connection.beginTransaction();
         const [studentRows] = await connection.query(
-            `SELECT id, role, faculty_id, department_id, session
+            `SELECT id, role, is_verified, faculty_id, department_id, session
              FROM users
              WHERE id = ?
              FOR UPDATE`,
             [userId]
         );
         const student = studentRows[0];
+        if (student?.role === "lecturer" && student.is_verified && type === "class") {
+            if (!student.department_id || !student.session) {
+                throw new HttpError(400, "Assign your lecturer account to a department and class session first");
+            }
+            if (typeof requestedSession !== "string" || !requestedSession.trim()) {
+                throw new HttpError(400, "Select a session for the class group chat");
+            }
+            if (requestedSession.trim() !== student.session) {
+                throw new HttpError(403, "You can only create class chats for your assigned session");
+            }
+            const [cohortRows] = await connection.query(
+                `SELECT id FROM users
+                 WHERE role = 'student' AND department_id = ? AND session = ?
+                 LIMIT 1`,
+                [student.department_id, requestedSession.trim()]
+            );
+            if (cohortRows.length === 0) {
+                throw new HttpError(404, "No students found for that department session");
+            }
+            const conversationId = await FindOrCreateClassConversation(
+                connection,
+                student.department_id,
+                requestedSession.trim()
+            );
+            await connection.commit();
+            return { data: await LoadConversation(conversationId) };
+        }
         if (!student || student.role !== "student") {
             throw new HttpError(403, "Only students can start conversations");
         }
@@ -167,74 +265,11 @@ export async function CreateConversation(userId, type) {
             return { data: await LoadConversation(conversationId) };
         }
 
-        const [existingConversationRows] = await connection.query(
-            `SELECT id
-             FROM chat_conversations
-             WHERE student_id = ? AND type = 'lecturer'
-             ORDER BY created_at DESC
-             LIMIT 1
-             FOR UPDATE`,
-            [userId]
+        const conversationId = await FindOrCreateLecturerConversation(
+            connection,
+            userId,
+            student
         );
-        if (existingConversationRows[0]) {
-            await connection.commit();
-            return { data: await LoadConversation(existingConversationRows[0].id) };
-        }
-
-        const facultyId = student.faculty_id ??
-            (student.department_id
-                ? (await connection.query(
-                    "SELECT faculty_id FROM departments WHERE id = ?",
-                    [student.department_id]
-                ))[0][0]?.faculty_id
-                : null);
-        if (!student.department_id && !facultyId) {
-            throw new HttpError(400, "Assign your department or faculty before starting a lecturer chat");
-        }
-
-        const [lecturerRows] = await connection.query(
-            `SELECT lecturer.id
-             FROM users AS lecturer
-             LEFT JOIN departments AS lecturer_department
-               ON lecturer_department.id = lecturer.department_id
-             WHERE lecturer.role = 'lecturer'
-               AND lecturer.is_verified = TRUE
-               AND (
-                    (? IS NOT NULL AND lecturer.department_id = ?)
-                    OR (? IS NOT NULL AND COALESCE(lecturer.faculty_id, lecturer_department.faculty_id) = ?)
-               )
-             ORDER BY (lecturer.department_id = ?) DESC,
-                      lecturer.created_at ASC, lecturer.id ASC
-             LIMIT 1`,
-            [
-                student.department_id,
-                student.department_id,
-                facultyId,
-                facultyId,
-                student.department_id,
-            ]
-        );
-        const lecturer = lecturerRows[0];
-        if (!lecturer) {
-            throw new HttpError(404, "No verified lecturer is available for your department or faculty");
-        }
-
-        const [existingRows] = await connection.query(
-            `SELECT id
-             FROM chat_conversations
-             WHERE student_id = ? AND lecturer_id = ? AND type = 'lecturer'
-             LIMIT 1
-             FOR UPDATE`,
-            [userId, lecturer.id]
-        );
-        const conversationId = existingRows[0]?.id ?? uuidv4();
-        if (!existingRows[0]) {
-            await connection.query(
-                `INSERT INTO chat_conversations (id, type, student_id, lecturer_id)
-                 VALUES (?, 'lecturer', ?, ?)`,
-                [conversationId, userId, lecturer.id]
-            );
-        }
         await connection.commit();
         return { data: await LoadConversation(conversationId) };
     } catch (error) {
@@ -243,6 +278,32 @@ export async function CreateConversation(userId, type) {
     } finally {
         connection.release();
     }
+}
+
+export async function ListClassSessions(user) {
+    if (user.role !== "lecturer" || !user.is_verified) {
+        throw new HttpError(403, "Verified lecturer access required");
+    }
+    const [lecturerRows] = await pool.query(
+        `SELECT department_id, session FROM users
+         WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE`,
+        [user.id]
+    );
+    const departmentId = lecturerRows[0]?.department_id;
+    if (!departmentId) {
+        throw new HttpError(400, "Assign your lecturer account to a department first");
+    }
+    if (!lecturerRows[0].session) {
+        throw new HttpError(400, "Assign a class session to your lecturer account first");
+    }
+    const [rows] = await pool.query(
+        `SELECT DISTINCT session
+         FROM users
+         WHERE role = 'student' AND department_id = ? AND session = ?
+         ORDER BY session DESC`,
+        [departmentId, lecturerRows[0].session]
+    );
+    return { data: rows.map(({ session }) => session) };
 }
 
 export async function ListConversations(user) {
@@ -266,7 +327,7 @@ export async function ListConversations(user) {
         values = [user.id, student.department_id, student.session];
     } else if (user.role === "lecturer" && user.is_verified) {
         const [lecturerRows] = await pool.query(
-            "SELECT department_id FROM users WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE",
+            "SELECT department_id, session FROM users WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE",
             [user.id]
         );
         const lecturer = lecturerRows[0];
@@ -276,10 +337,10 @@ export async function ListConversations(user) {
             OR (
                 conversation.type = 'class'
                 AND conversation.class_department_id = ?
-                AND ? IS NOT NULL
+                AND conversation.class_session = ?
             )
         )`;
-        values = [user.id, lecturer.department_id, lecturer.department_id];
+        values = [user.id, lecturer.department_id, lecturer.session];
     } else if (user.role === "admin") {
         condition = "conversation.type = 'support'";
         values = [];
@@ -289,8 +350,10 @@ export async function ListConversations(user) {
 
     const [rows] = await pool.query(
         `SELECT conversation.id, conversation.type, conversation.student_id,
-                conversation.lecturer_id, conversation.created_at, conversation.updated_at,
-                student.name AS student_name, lecturer.name AS lecturer_name,
+                conversation.lecturer_id, conversation.class_session,
+                conversation.created_at, conversation.updated_at,
+                student.name AS student_name, student.image AS student_image,
+                lecturer.name AS lecturer_name, lecturer.image AS lecturer_image,
                 class_department.name AS class_department,
                 latest.body AS last_message, latest.created_at AS last_message_at
          FROM chat_conversations AS conversation
@@ -326,7 +389,8 @@ export async function ListMessages(conversationId, user, query = {}) {
 
     const [rows] = await pool.query(
         `SELECT message.id, message.conversation_id, message.sender_id,
-                sender.name AS sender_name, message.query_id, message.body, message.created_at
+                sender.name AS sender_name, sender.image AS sender_image,
+                message.query_id, message.body, message.created_at
          FROM chat_messages AS message
          INNER JOIN users AS sender ON sender.id = message.sender_id
          WHERE message.conversation_id = ?
@@ -356,7 +420,8 @@ export async function SendMessage(conversationId, user, body) {
         );
         const [rows] = await connection.query(
             `SELECT message.id, message.conversation_id, message.sender_id,
-                    sender.name AS sender_name, message.query_id,
+                    sender.name AS sender_name, sender.image AS sender_image,
+                    message.query_id,
                     message.body, message.created_at
              FROM chat_messages AS message
              INNER JOIN users AS sender ON sender.id = message.sender_id

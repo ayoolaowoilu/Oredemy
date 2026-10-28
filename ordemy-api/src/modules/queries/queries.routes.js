@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { AddQuery, deleteQuery, getMyDashboard } from "./queries.controller.js";
+import { AddQuery, deleteQuery, getMyDashboard, getMyQueries } from "./queries.controller.js";
 import { authenticate } from "../../middleware/auth.js";
 
 
@@ -8,5 +8,6 @@ import { authenticate } from "../../middleware/auth.js";
 router.post("/add", authenticate, AddQuery)
 router.delete("/delete", authenticate, deleteQuery)
 router.get("/dashboard", authenticate, getMyDashboard)
+router.get("/mine", authenticate, getMyQueries)
 
 export default router;
