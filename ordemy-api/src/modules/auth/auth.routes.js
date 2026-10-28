@@ -19,7 +19,7 @@ router.post(
     authenticate,
     express.raw({
         type: ["image/jpeg", "image/png", "image/webp"],
-        limit: "5mb",
+        limit: "1mb",
     }),
     UploadProfileImage
 );

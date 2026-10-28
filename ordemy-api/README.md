@@ -266,7 +266,7 @@ Response fields: `id`, `name`, `email`, `role`, `image`, `is_verified`, `session
 
 ### Upload a profile image
 
-`POST /api/auth/profile-image` — requires authentication. Send the image bytes directly with `Content-Type: image/jpeg`, `image/png`, or `image/webp`. Images are limited to 5 MB. The API signs the Cloudinary request using server-only environment variables, saves the returned secure URL to the signed-in user's profile, and returns `{ "image": "https://..." }`. Never put Cloudinary credentials in client code.
+`POST /api/auth/profile-image` — requires authentication. Send the image bytes directly with `Content-Type: image/jpeg`, `image/png`, or `image/webp`. Images must be 1 MB or smaller; onboarding compresses profile images to fit before upload. The API signs the Cloudinary request using server-only environment variables, saves the returned secure URL to the signed-in user's profile, and returns `{ "image": "https://..." }`. Never put Cloudinary credentials in client code.
 
 ### Select an adviser department and class session
 
