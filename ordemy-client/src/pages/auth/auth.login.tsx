@@ -32,8 +32,11 @@ export default function Login() {
 
     setSubmitting(true);
     try {
-      await login({ email, password });
-      navigate(from, { replace: true });
+      const user = await login({ email, password });
+      const needsOnboarding =
+        user.role === "student" &&
+        (!user.faculty_id || !user.department_id || !user.session);
+      navigate(needsOnboarding ? "/onboarding" : from, { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {

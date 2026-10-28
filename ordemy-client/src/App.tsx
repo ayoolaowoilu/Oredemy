@@ -3,6 +3,7 @@ import { ProtectedRoute, PublicOnlyRoute } from "./components/route-guards";
 import Login from "./pages/auth/auth.login";
 import Register from "./pages/auth/auth.register";
 import Home from "./pages/home";
+import Onboarding from "./pages/onboarding/ob.page";
 
 export default function App() {
   return (
@@ -10,6 +11,10 @@ export default function App() {
       <Route element={<PublicOnlyRoute />}>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+      </Route>
+
+      <Route element={<ProtectedRoute roles={["student"]} />}>
+        <Route path="/onboarding" element={<Onboarding />} />
       </Route>
 
       <Route element={<ProtectedRoute />}>
