@@ -48,6 +48,7 @@ CREATE TABLE users (
     faculty_id INT NULL,
     department_id INT NULL,
     session VARCHAR(50) NULL,
+    admission_session VARCHAR(50) NULL,
 
     role ENUM('lecturer', 'admin', 'student')
         NOT NULL DEFAULT 'student',

@@ -7,6 +7,7 @@ export interface EditUserRequest {
         values: Partial<Pick<AuthUser, "name">> & {
             image?: string | null;
             session?: string | null;
+            admission_session?: string | null;
             faculty_id?: number | null;
             department_id?: number | null;
         };

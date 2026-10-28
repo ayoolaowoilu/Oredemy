@@ -65,7 +65,7 @@ export async function LoginUser(userData) {
 export async function GetUserData(userId) {
     const [rows] = await pool.query(
         `SELECT users.id, users.name, users.email, users.role,
-                users.is_verified, users.session,
+                users.is_verified, users.session, users.admission_session,
                 users.faculty_id, users.department_id,
                 faculties.name AS faculty, departments.name AS department,
                 users.created_at

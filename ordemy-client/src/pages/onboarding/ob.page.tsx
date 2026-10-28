@@ -98,7 +98,7 @@ export default function Onboarding() {
           values: {
             faculty_id: selectedFaculty.id,
             department_id: selectedDepartment.id,
-            session: currentSession.label,
+            session: admissionSession,
           },
         },
         token,

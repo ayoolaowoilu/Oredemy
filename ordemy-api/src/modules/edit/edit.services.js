@@ -21,7 +21,7 @@ async function updateColumns(tableName, columns, values, whereClause, whereValue
 
 export async function EditUserData(editData, userId) {
     const columns = UserEditValidation(editData);
-    const enrollmentFields = ["session", "faculty_id", "department_id"];
+    const enrollmentFields = ["session", "admission_session", "faculty_id", "department_id"];
     if (columns.some((column) => enrollmentFields.includes(column))) {
         return updateUserProfile(editData, userId, columns);
     }
