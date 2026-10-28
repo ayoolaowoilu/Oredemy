@@ -861,3 +861,29 @@ This class-chat upgrade uses department plus academic session as the class ident
 Existing lecturer accounts remain unverified until an admin explicitly approves them. Keep database credentials and JWT secrets out of frontend code and source control.
 
 Frontend request/response TypeScript definitions are in [`types.ts`](./types.ts).
+
+## Adviser AI and chat
+
+For an existing database, run [`migrations/20261028_add_adviser_ai.sql`](./migrations/20261028_add_adviser_ai.sql) once before starting the updated API. New databases receive the same tables from `data.sql`.
+
+Set `AI_SETTINGS_ENCRYPTION_KEY` in the API environment to a base64-encoded 32-byte key. Generate one locally with:
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+```
+
+Keep this key stable and private. Changing or losing it makes previously stored provider keys unreadable. Advisers configure their own Groq API key in the dashboard; the server encrypts it and never returns it to the browser. Groq receives the subject and text of questions selected for grouping. Generated replies remain drafts until an adviser reviews and sends them.
+
+The adviser endpoints are mounted under `/api/adviser` and require an authenticated, verified lecturer assigned to a department:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/adviser/dashboard` | Department question totals and pending class-rep requests |
+| `GET` / `PUT` | `/api/adviser/ai-settings` | Read masked settings or save a key/model |
+| `GET` | `/api/adviser/ai-runs` | List scheduler runs and reply drafts |
+| `PATCH` | `/api/adviser/ai-runs/:runId/groups/:groupId` | Save an edited draft |
+| `POST` | `/api/adviser/ai-runs/:runId/groups/:groupId/send` | Send a reviewed draft to its students |
+
+The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos`. It writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
+
+Adviser chat uses the existing authenticated Socket.IO endpoint. Verified lecturers can list `/api/chat/class-sessions` and create or open a department group with `POST /api/chat/conversations` using `{ "type": "class", "session": "2025/2026" }`. Chat messages sent through REST or Socket.IO are broadcast to authorized conversation rooms.

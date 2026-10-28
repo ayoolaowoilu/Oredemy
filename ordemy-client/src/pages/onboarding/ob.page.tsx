@@ -104,7 +104,7 @@ export default function Onboarding() {
         token,
       );
       await refreshProfile();
-      navigate("/", { replace: true });
+      navigate("/dashboard/student", { replace: true });
     } catch (requestError) {
       setError(
         requestError instanceof ApiError

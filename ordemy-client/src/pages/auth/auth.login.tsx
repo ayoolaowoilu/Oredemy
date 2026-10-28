@@ -39,7 +39,14 @@ export default function Login() {
           !user.department_id ||
           !user.session ||
           !user.admission_session);
-      navigate(needsOnboarding ? "/onboarding" : from, { replace: true });
+      const destination = needsOnboarding
+        ? "/onboarding"
+        : user.role === "student" && from === "/"
+          ? "/dashboard/student"
+          : user.role === "lecturer" && from === "/"
+            ? "/dashboard/adviser"
+          : from;
+      navigate(destination, { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {

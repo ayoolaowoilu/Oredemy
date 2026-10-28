@@ -50,6 +50,7 @@ export interface LoginRequest {
 export interface UserProfile extends AuthUser {
     session: string | null;
     admission_session: string | null;
+    calendar_offset: number | null;
     faculty_id: number | null;
     department_id: number | null;
     faculty: string | null;
@@ -114,6 +115,22 @@ export interface AddQueryResponse {
     id: number;
     chat_conversation_id?: string;
     message: string;
+}
+
+export interface StudentDashboardResponse {
+    stats: {
+        totalQueries: number;
+        queriesWithReply: number;
+        awaitingReply: number;
+    };
+    recentQueries: Array<{
+        id: number;
+        subject: string;
+        query_type: QueryType;
+        session: string;
+        created_at: string;
+        has_reply: boolean;
+    }>;
 }
 
 export type ChatConversationType = "support" | "lecturer" | "class";

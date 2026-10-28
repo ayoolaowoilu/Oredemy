@@ -5,6 +5,13 @@ import {
     ValidateConversationId,
 } from "./chat.services.js";
 
+let socketServer;
+
+export function publishChatMessage(message) {
+    if (!socketServer || !message?.conversation_id) return;
+    socketServer.to(roomName(message.conversation_id)).emit("chat:message", message);
+}
+
 function getToken(socket) {
     const authToken = socket.handshake.auth?.token;
     if (typeof authToken === "string") return authToken;
@@ -44,6 +51,7 @@ function sendError(socket, acknowledge, error) {
 }
 
 export function configureChatSocket(io) {
+    socketServer = io;
     io.use(async (socket, next) => {
         try {
             socket.data.user = await AuthenticateChatToken(getToken(socket));

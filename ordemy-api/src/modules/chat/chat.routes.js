@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authenticate } from "../../middleware/auth.js";
 import {
     createConversation,
+    listClassSessions,
     listConversations,
     listMessages,
     sendMessage,
@@ -11,6 +12,7 @@ const router = Router();
 
 router.use(authenticate);
 router.get("/conversations", listConversations);
+router.get("/class-sessions", listClassSessions);
 router.post("/conversations", createConversation);
 router.get("/conversations/:id/messages", listMessages);
 router.post("/conversations/:id/messages", sendMessage);

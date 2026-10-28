@@ -68,13 +68,21 @@ export async function GetUserData(userId) {
                 users.is_verified, users.session, users.admission_session,
                 users.faculty_id, users.department_id,
                 faculties.name AS faculty, departments.name AS department,
+                schools.calendar_offset,
                 users.created_at
          FROM users
          LEFT JOIN faculties ON faculties.id = users.faculty_id
+         LEFT JOIN schools ON schools.id = faculties.school_id
          LEFT JOIN departments ON departments.id = users.department_id
          WHERE users.id = ?`,
         [userId]
     );
     if (!rows[0]) return undefined;
-    return { ...rows[0], is_verified: Boolean(rows[0].is_verified) };
+    return {
+        ...rows[0],
+        is_verified: Boolean(rows[0].is_verified),
+        calendar_offset: rows[0].calendar_offset === null
+            ? null
+            : Number(rows[0].calendar_offset),
+    };
 }
