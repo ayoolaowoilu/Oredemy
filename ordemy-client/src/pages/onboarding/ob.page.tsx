@@ -243,8 +243,14 @@ export default function Onboarding() {
           </label>
           {level !== null && <p>Your calculated level: {level} level</p>}
           <p>
-            {selectedSchool?.name} session offset:{" "}
-            {selectedSchool?.calendar_offset}
+            {selectedSchool?.name} is{" "}
+            {Math.abs(selectedSchool?.calendar_offset ?? 0)} session
+            {Math.abs(selectedSchool?.calendar_offset ?? 0) === 1 ? "" : "s"}{" "}
+            {selectedSchool?.calendar_offset === 0
+              ? "aligned with the calendar year"
+              : selectedSchool && selectedSchool.calendar_offset > 0
+                ? "behind the calendar year"
+                : "ahead of the calendar year"}
           </p>
         </>
       )}

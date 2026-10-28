@@ -19,7 +19,7 @@ export function getCurrentAcademicSession(
   if (!Number.isInteger(calendarOffset)) {
     throw new TypeError("Calendar offset must be an integer");
   }
-  return makeSession(date.getFullYear() + calendarOffset);
+  return makeSession(date.getFullYear() - calendarOffset);
 }
 
 export function getAdmissionSessions(currentSession: AcademicSession): AcademicSession[] {
