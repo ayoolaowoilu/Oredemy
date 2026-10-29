@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  ArrowLeft,
   MessageCircle,
   MessageSquareText,
   Plus,
@@ -8,6 +9,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { ApiError } from "../../lib/api";
+import { notifyChatRead } from "../../hooks/use-chat-unread-count";
 import { useAuth } from "../../context/useAuth";
 import type { ChatConversation, ChatMessage } from "../../utils/types";
 import { UserAvatar } from "../../components/user-avatar";
@@ -17,6 +19,7 @@ import {
   fetchAdviserConversations,
   fetchAdviserMessages,
   fetchClassSessions,
+  markAdviserConversationRead,
   sendAdviserMessage,
 } from "./api";
 import { AdviserCard, AdviserNotice, AdviserPageIntro } from "./shared";
@@ -44,10 +47,21 @@ export default function AdviserChat() {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
   const socketRef = useRef<ReturnType<typeof connectAdviserSocket> | null>(null);
   const scrollContainer = useRef<HTMLDivElement>(null);
   const selectedIdRef = useRef<string | null>(null);
   const selectedConversationId = selected?.id ?? null;
+
+  async function markRead(conversationId: string) {
+    await markAdviserConversationRead(conversationId);
+    setConversations((current) =>
+      current.map((item) =>
+        item.id === conversationId ? { ...item, unread_count: 0 } : item,
+      ),
+    );
+    notifyChatRead();
+  }
 
   useEffect(() => {
     let active = true;
@@ -78,7 +92,7 @@ export default function AdviserChat() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     const socket = connectAdviserSocket();
@@ -106,20 +120,54 @@ export default function AdviserChat() {
             : item,
         ),
       );
+      if (
+        message.conversation_id === selectedIdRef.current &&
+        message.sender_id !== user?.id &&
+        document.visibilityState === "visible"
+      ) {
+        void markRead(message.conversation_id).catch((readError: unknown) => {
+          setError(readError instanceof Error ? readError.message : "Could not mark messages as read.");
+        });
+      }
+    };
+    const onNotification = (message: ChatMessage) => {
+      if (message.sender_id === user?.id) return;
+      const isVisibleConversation =
+        message.conversation_id === selectedIdRef.current &&
+        document.visibilityState === "visible";
+      setConversations((current) =>
+        current.map((item) =>
+          item.id === message.conversation_id
+            ? {
+                ...item,
+                last_message: message.body,
+                last_message_at: message.created_at,
+                unread_count: isVisibleConversation ? 0 : Number(item.unread_count ?? 0) + 1,
+              }
+            : item,
+        ),
+      );
+      if (isVisibleConversation) {
+        void markRead(message.conversation_id).catch((readError: unknown) => {
+          setError(readError instanceof Error ? readError.message : "Could not mark messages as read.");
+        });
+      }
     };
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("connect_error", onConnectError);
     socket.on("chat:message", onMessage);
+    socket.on("chat:notification", onNotification);
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("connect_error", onConnectError);
       socket.off("chat:message", onMessage);
+      socket.off("chat:notification", onNotification);
       socket.disconnect();
       socketRef.current = null;
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     selectedIdRef.current = selectedConversationId;
@@ -145,7 +193,14 @@ export default function AdviserChat() {
     };
     fetchAdviserMessages(selectedConversationId)
       .then((response) => {
-        if (active) setMessages(response.data);
+        if (active) {
+          setMessages(response.data);
+          void markRead(selectedConversationId).catch((readError: unknown) => {
+            if (active) {
+              setError(readError instanceof Error ? readError.message : "Could not mark messages as read.");
+            }
+          });
+        }
       })
       .catch((loadError: unknown) => {
         if (active) {
@@ -179,6 +234,7 @@ export default function AdviserChat() {
       ]);
       setMessages([]);
       setSelected(response.data);
+      setMobileConversationOpen(true);
       setNotice(`Class group chat opened for ${session}.`);
     } catch (createError: unknown) {
       setError(
@@ -233,6 +289,7 @@ export default function AdviserChat() {
           ? current
           : [...current, response.data],
       );
+      await markRead(selected.id);
       setConversations((current) =>
         current.map((item) =>
           item.id === selected.id
@@ -307,17 +364,20 @@ export default function AdviserChat() {
         </div>
       </div>
 
-      <AdviserCard className="overflow-hidden" padded={false}>
-        <div className="grid min-h-[min(70vh,680px)] lg:grid-cols-[290px_minmax(0,1fr)]">
-          <aside className="border-b border-slate-200 lg:border-b-0 lg:border-r">
+      <AdviserCard className="overflow-hidden p-0">
+        <div className="grid h-[min(72vh,700px)] min-h-[500px] md:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className={`${mobileConversationOpen ? "hidden" : "flex"} min-h-0 flex-col border-b border-slate-200 md:flex md:border-b-0 md:border-r`}>
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4">
-              <p className="text-sm font-bold text-slate-900">Conversations</p>
+              <div>
+                <p className="text-sm font-bold text-slate-900">Conversations</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">Students and class groups</p>
+              </div>
               <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold ${connected ? "text-emerald-700" : "text-amber-700"}`}>
                 <span className={`size-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
                 {connected ? "Live" : "Socket offline"}
               </span>
             </div>
-            <div className="flex max-h-64 gap-2 overflow-x-auto p-3 lg:max-h-[590px] lg:flex-col lg:overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
               {loading ? (
                 <p className="p-3 text-xs text-slate-400">Loading conversations…</p>
               ) : conversations.length ? conversations.map((item) => (
@@ -327,31 +387,32 @@ export default function AdviserChat() {
                   onClick={() => {
                     setMessages([]);
                     setSelected(item);
+                    setMobileConversationOpen(true);
                   }}
-                  className={`min-w-56 rounded-xl p-3 text-left transition-colors lg:min-w-0 ${selected?.id === item.id ? "bg-[#2501FF]/[0.07]" : "hover:bg-slate-50"}`}
+                  className={`mb-1 flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors ${selected?.id === item.id ? "bg-[#2501FF]/[0.07]" : "hover:bg-slate-50"}`}
                 >
-                  <span className="flex items-center gap-2">
-                    {item.type === "class" ? (
-                      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-700">
+                  {item.type === "class" ? (
+                    <span className="grid size-11 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-700">
                         <UsersRound size={16} />
-                      </span>
-                    ) : (
-                      <UserAvatar image={item.student_image} name={item.student_name} className="size-9 shrink-0 text-sm" />
-                    )}
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-bold text-slate-900">
-                        {item.type === "class"
-                          ? `${item.class_department ?? "Department"} · ${item.class_session ?? "Class"}`
-                          : item.student_name ?? "Student conversation"}
-                      </span>
-                      <span className="block text-[10px] capitalize text-slate-400">
-                        {item.type === "class" ? "Group chat" : "Direct chat"}
-                      </span>
+                    </span>
+                  ) : (
+                    <UserAvatar image={item.student_image} name={item.student_name} className="size-11 shrink-0 text-sm" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold text-slate-900">
+                      {item.type === "class"
+                        ? `${item.class_department ?? "Department"} · ${item.class_session ?? "Class"}`
+                        : item.student_name ?? "Student conversation"}
+                    </span>
+                    <span className="mt-1 block truncate text-xs text-slate-500">
+                      {item.last_message ?? (item.type === "class" ? "Department group" : "Direct chat")}
                     </span>
                   </span>
-                  <span className="mt-2 block truncate text-xs text-slate-500">
-                    {item.last_message ?? "No messages yet"}
-                  </span>
+                  {Number(item.unread_count) > 0 && (
+                    <span className="grid min-w-5 shrink-0 place-items-center rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      {Number(item.unread_count) > 99 ? "99+" : item.unread_count}
+                    </span>
+                  )}
                 </button>
               )) : (
                 <div className="px-3 py-5 text-center lg:py-10">
@@ -362,10 +423,18 @@ export default function AdviserChat() {
             </div>
           </aside>
 
-          <div className="flex min-h-[440px] min-w-0 flex-col">
+          <div className={`${mobileConversationOpen ? "flex" : "hidden"} min-h-0 min-w-0 flex-col md:flex`}>
             {selected ? (
               <>
-                <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-4 sm:px-6">
+                <div className="flex items-center gap-3 border-b border-slate-100 px-3 py-3 sm:px-6 sm:py-4">
+                  <button
+                    type="button"
+                    onClick={() => setMobileConversationOpen(false)}
+                    aria-label="Back to conversations"
+                    className="grid size-9 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-slate-100 md:hidden"
+                  >
+                    <ArrowLeft size={18} />
+                  </button>
                   {selected.type === "class" ? (
                     <span className="grid size-10 place-items-center rounded-full bg-violet-50 text-violet-700">
                       <UsersRound size={18} />
@@ -373,13 +442,13 @@ export default function AdviserChat() {
                   ) : (
                     <UserAvatar image={selected.student_image} name={selected.student_name} className="size-10" />
                   )}
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-slate-900">
                       {selected.type === "class"
                         ? `${selected.class_department ?? "Department"} · ${selected.class_session ?? "Class"}`
                         : selected.student_name ?? "Student"}
                     </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
+                    <p className="mt-0.5 truncate text-xs text-slate-500">
                       {selected.type === "class" ? "Department group conversation" : "One-to-one adviser conversation"}
                     </p>
                   </div>
@@ -387,7 +456,7 @@ export default function AdviserChat() {
                     type="button"
                     onClick={() => void refreshMessages()}
                     aria-label="Refresh messages"
-                    className="ml-auto grid size-9 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-[#2501FF]"
+                    className="grid size-9 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-[#2501FF]"
                   >
                     <RefreshCw size={16} />
                   </button>
@@ -405,7 +474,14 @@ export default function AdviserChat() {
                       >
                         <UserAvatar image={isMine ? user?.image : message.sender_image} name={isMine ? user?.name : message.sender_name} className="size-8 shrink-0" />
                         <article className={`min-w-0 rounded-2xl px-4 py-3 ${isMine ? "rounded-br-md bg-[#2501FF] text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-800"}`}>
-                          {!isMine && <p className="mb-1 text-[10px] font-bold text-[#2501FF]">{message.sender_name}</p>}
+                          {!isMine && (
+                            <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                              <p className="text-[10px] font-bold text-[#2501FF]">{message.sender_name}</p>
+                              {Boolean(message.sender_is_class_rep) && (
+                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">Class rep</span>
+                              )}
+                            </div>
+                          )}
                           <p className="whitespace-pre-wrap break-words text-sm leading-6">{message.body}</p>
                           <p className={`mt-2 text-right text-[10px] ${isMine ? "text-white/65" : "text-slate-400"}`}>
                             {showTime(message.created_at)}
