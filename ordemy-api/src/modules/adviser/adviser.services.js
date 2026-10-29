@@ -227,7 +227,9 @@ export async function SendAiGroup(lecturerId, runIdValue, groupIdValue) {
         );
         await connection.commit();
         for (const conversation of conversationRows) {
-            publishChatMessage(conversation.message);
+            void publishChatMessage(conversation.message).catch((error) => {
+                console.error("[chat] Could not publish reviewed AI reply:", error);
+            });
         }
         return { message: "Reviewed reply sent to grouped students", recipients: conversationRows.length };
     } catch (error) {

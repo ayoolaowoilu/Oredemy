@@ -364,8 +364,18 @@ export async function ListConversations(user) {
                 student.name AS student_name, student.image AS student_image,
                 lecturer.name AS lecturer_name, lecturer.image AS lecturer_image,
                 class_department.name AS class_department,
-                latest.body AS last_message, latest.created_at AS last_message_at
+                latest.body AS last_message, latest.created_at AS last_message_at,
+                (
+                    SELECT COUNT(*)
+                    FROM chat_messages AS unread_message
+                    WHERE unread_message.conversation_id = conversation.id
+                      AND unread_message.sender_id <> ?
+                      AND unread_message.id > COALESCE(read_receipt.last_read_message_id, 0)
+                ) AS unread_count
          FROM chat_conversations AS conversation
+         LEFT JOIN chat_read_receipts AS read_receipt
+           ON read_receipt.conversation_id = conversation.id
+          AND read_receipt.user_id = ?
          LEFT JOIN users AS student ON student.id = conversation.student_id
          LEFT JOIN users AS lecturer ON lecturer.id = conversation.lecturer_id
          LEFT JOIN departments AS class_department
@@ -380,9 +390,27 @@ export async function ListConversations(user) {
            )
          WHERE ${condition}
          ORDER BY COALESCE(latest.created_at, conversation.updated_at) DESC`,
-        values
+        [user.id, user.id, ...values]
     );
     return { data: rows };
+}
+
+export async function MarkConversationRead(conversationId, user) {
+    await AuthorizeConversation(conversationId, user);
+    const [rows] = await pool.query(
+        `SELECT COALESCE(MAX(id), 0) AS last_read_message_id
+         FROM chat_messages
+         WHERE conversation_id = ?`,
+        [conversationId]
+    );
+    await pool.query(
+        `INSERT INTO chat_read_receipts (conversation_id, user_id, last_read_message_id)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+            last_read_message_id = GREATEST(last_read_message_id, VALUES(last_read_message_id))`,
+        [conversationId, user.id, rows[0].last_read_message_id]
+    );
+    return { data: { conversation_id: conversationId, unread_count: 0 } };
 }
 
 export async function ListMessages(conversationId, user, query = {}) {
@@ -399,7 +427,15 @@ export async function ListMessages(conversationId, user, query = {}) {
     const [rows] = await pool.query(
         `SELECT message.id, message.conversation_id, message.sender_id,
                 sender.name AS sender_name, sender.image AS sender_image,
-                message.query_id, message.body, message.created_at
+                message.query_id, message.body, message.created_at,
+                EXISTS (
+                    SELECT 1
+                    FROM class_rep_requests AS class_rep
+                    WHERE class_rep.student_id = message.sender_id
+                      AND class_rep.department_id = sender.department_id
+                      AND class_rep.session = sender.session
+                      AND class_rep.status = 'approved'
+                ) AS sender_is_class_rep
          FROM chat_messages AS message
          INNER JOIN users AS sender ON sender.id = message.sender_id
          WHERE message.conversation_id = ?
@@ -431,7 +467,15 @@ export async function SendMessage(conversationId, user, body) {
             `SELECT message.id, message.conversation_id, message.sender_id,
                     sender.name AS sender_name, sender.image AS sender_image,
                     message.query_id,
-                    message.body, message.created_at
+                    message.body, message.created_at,
+                    EXISTS (
+                        SELECT 1
+                        FROM class_rep_requests AS class_rep
+                        WHERE class_rep.student_id = message.sender_id
+                          AND class_rep.department_id = sender.department_id
+                          AND class_rep.session = sender.session
+                          AND class_rep.status = 'approved'
+                    ) AS sender_is_class_rep
              FROM chat_messages AS message
              INNER JOIN users AS sender ON sender.id = message.sender_id
              WHERE message.id = ?`,
