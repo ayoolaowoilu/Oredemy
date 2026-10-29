@@ -31,6 +31,9 @@ export interface AiGroup {
   draft_reply: string;
   status: "pending" | "sent";
   auto_sent: boolean;
+  has_active_reply_rule: boolean;
+  active_reply_text: string | null;
+  matched_reply_rule_id: number | null;
   created_at: string;
   sent_at: string | null;
 }
@@ -60,22 +63,6 @@ export interface AiNotification {
   is_read: boolean;
   created_at: string;
 }
-
-export const fetchAiPreferences = () =>
-  apiRequest<{ data: { ai_auto_replies: boolean } }>("/api/adviser/ai-preferences", {
-    token: getToken(),
-    cache: "no-store",
-  });
-
-export const updateAiPreferences = (aiAutoReplies: boolean) =>
-  apiRequest<{ data: { ai_auto_replies: boolean }; message: string }>(
-    "/api/adviser/ai-preferences",
-    {
-      method: "PATCH",
-      token: getToken(),
-      body: { ai_auto_replies: aiAutoReplies },
-    },
-  );
 
 export const fetchAiNotifications = () =>
   apiRequest<{ data: AiNotification[]; unread_count: number }>(
@@ -130,6 +117,26 @@ export const sendAiDraft = (runId: number, groupId: number) =>
   apiRequest<{ message: string; recipients: number }>(
     `/api/adviser/ai-runs/${runId}/groups/${groupId}/send`,
     { method: "POST", token: getToken(), body: {} },
+  );
+
+export const saveAiReplyRule = (
+  runId: number,
+  groupId: number,
+  replyText: string,
+) =>
+  apiRequest<{ message: string }>(
+    `/api/adviser/ai-runs/${runId}/groups/${groupId}/reply-rule`,
+    {
+      method: "PUT",
+      token: getToken(),
+      body: { replyText },
+    },
+  );
+
+export const cancelAiReplyRule = (runId: number, groupId: number) =>
+  apiRequest<{ message: string }>(
+    `/api/adviser/ai-runs/${runId}/groups/${groupId}/reply-rule`,
+    { method: "DELETE", token: getToken() },
   );
 
 export const fetchPendingClassRepRequests = () =>

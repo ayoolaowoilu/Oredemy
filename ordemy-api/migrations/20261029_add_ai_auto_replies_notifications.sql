@@ -1,6 +1,3 @@
-ALTER TABLE users
-    ADD COLUMN ai_auto_replies BOOLEAN NOT NULL DEFAULT FALSE;
-
 ALTER TABLE adviser_ai_groups
     ADD COLUMN auto_sent BOOLEAN NOT NULL DEFAULT FALSE;
 

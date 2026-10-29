@@ -133,7 +133,16 @@ async function getDueSlots(lecturerId, now) {
     return slots;
 }
 
-async function callGroq(config, questions) {
+async function callGroq(config, questions, replyRules) {
+    const ruleContext = replyRules.map((rule) => ({
+        id: rule.id,
+        title: rule.title,
+        examples: rule.examples.slice(0, 3).map((example) => ({
+            subject: String(example.subject ?? "").slice(0, 300),
+            question: String(example.question ?? "").slice(0, 1000),
+            category: String(example.category ?? "").slice(0, 100),
+        })),
+    }));
     const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
         method: "POST",
         headers: {
@@ -148,16 +157,19 @@ async function callGroq(config, questions) {
             messages: [
                 {
                     role: "system",
-                    content: `You are an academic support assistant helping a university adviser triage student questions. Group questions that genuinely ask about the same issue. Do not invent university policies or claim an action has been taken. Each group draft should acknowledge the issue, give a cautious helpful response from the supplied question context only, and say when adviser confirmation is needed. Return only JSON with shape {"groups":[{"title":"short theme","question_ids":[1,2],"draft_reply":"draft for adviser review"}]}. Include every supplied question exactly once; never omit, duplicate, or add IDs.`,
+                    content: `You are an academic support assistant helping a university adviser triage student questions. Group questions that genuinely ask about the same issue. Do not invent university policies or claim an action has been taken. Each group draft should acknowledge the issue, give a cautious helpful response from the supplied question context only, and say when adviser confirmation is needed. The user message may include active lecturer-approved reply rules. Set matched_rule_id to a rule ID only when the group's questions ask about the same specific issue as that rule's examples; otherwise set it to null. Never match merely because topics are broadly related. Do not alter the approved reply; the server will use it verbatim for a matched group. Return only JSON with shape {"groups":[{"title":"short theme","question_ids":[1,2],"draft_reply":"draft for adviser review","matched_rule_id":null}]}. Include every supplied question exactly once; never omit, duplicate, or add IDs.`,
                 },
                 {
                     role: "user",
-                    content: JSON.stringify(questions.map((question) => ({
-                        id: question.id,
-                        subject: question.subject,
-                        question: question.query,
-                        category: question.query_type,
-                    }))),
+                    content: JSON.stringify({
+                        questions: questions.map((question) => ({
+                            id: question.id,
+                            subject: question.subject,
+                            question: question.query,
+                            category: question.query_type,
+                        })),
+                        active_reply_rules: ruleContext,
+                    }),
                 },
             ],
         }),
@@ -177,13 +189,14 @@ async function callGroq(config, questions) {
     } catch {
         throw new Error("Groq returned invalid JSON for the grouped questions");
     }
-    validateGroups(parsed.groups, questions);
+    validateGroups(parsed.groups, questions, replyRules);
     return parsed.groups;
 }
 
-function validateGroups(groups, questions) {
+function validateGroups(groups, questions, replyRules) {
     if (!Array.isArray(groups)) throw new Error("AI output did not include groups");
     const questionIds = new Set(questions.map(({ id }) => Number(id)));
+    const ruleIds = new Set(replyRules.map(({ id }) => Number(id)));
     const included = [];
     for (const group of groups) {
         if (
@@ -194,6 +207,13 @@ function validateGroups(groups, questions) {
             group.question_ids.length === 0
         ) {
             throw new Error("AI returned an incomplete question group");
+        }
+        if (
+            group.matched_rule_id != null &&
+            (!Number.isSafeInteger(Number(group.matched_rule_id)) ||
+                !ruleIds.has(Number(group.matched_rule_id)))
+        ) {
+            throw new Error("AI returned an unknown automatic reply rule");
         }
         for (const id of group.question_ids) {
             if (!questionIds.has(Number(id))) {
@@ -306,6 +326,19 @@ async function processSlot(lecturer, slot) {
                 for (const id of ids) alreadyGroupedIds.add(Number(id));
             }
         }
+        const [replyRuleRows] = await pool.query(
+            `SELECT id, title, examples, reply_text
+             FROM adviser_ai_reply_rules
+             WHERE lecturer_id = ? AND is_active = TRUE
+             ORDER BY id`,
+            [lecturer.id]
+        );
+        const replyRules = replyRuleRows.map((rule) => ({
+            ...rule,
+            examples: typeof rule.examples === "string"
+                ? JSON.parse(rule.examples)
+                : rule.examples,
+        }));
         const [questionCountRows] = await pool.query(
             `SELECT COUNT(DISTINCT query_item.id) AS total
              FROM queries AS query_item
@@ -364,17 +397,24 @@ async function processSlot(lecturer, slot) {
                 if (questions.length === 0) break;
                 lastQuestionId = Number(questions[questions.length - 1].id);
                 processedCount += questions.length;
-                const groups = await callGroq(config, questions);
+                const groups = await callGroq(config, questions, replyRules);
                 for (const group of groups) {
+                    const matchedRuleId = group.matched_rule_id == null
+                        ? null
+                        : Number(group.matched_rule_id);
+                    const matchedRule = replyRules.find(
+                        (rule) => Number(rule.id) === matchedRuleId
+                    );
                     await pool.query(
                         `INSERT INTO adviser_ai_groups
-                         (run_id, title, question_ids, draft_reply, status)
-                         VALUES (?, ?, ?, ?, 'pending')`,
+                         (run_id, title, question_ids, draft_reply, status, reply_rule_id)
+                         VALUES (?, ?, ?, ?, 'pending', ?)`,
                         [
                             runId,
                             group.title.trim().slice(0, 255),
                             JSON.stringify(group.question_ids.map(Number)),
-                            group.draft_reply.trim(),
+                            matchedRule?.reply_text ?? group.draft_reply.trim(),
+                            matchedRuleId,
                         ]
                     );
                 }
@@ -386,17 +426,18 @@ async function processSlot(lecturer, slot) {
             }
         }
 
-        if (lecturer.ai_auto_replies) {
-            const [pendingGroups] = await pool.query(
-                `SELECT id
-                 FROM adviser_ai_groups
-                 WHERE run_id = ? AND status = 'pending'
-                 ORDER BY id`,
-                [runId]
-            );
-            for (const group of pendingGroups) {
-                await SendAiGroup(lecturer.id, runId, group.id, { automated: true });
-            }
+        const [pendingGroups] = await pool.query(
+            `SELECT question_group.id
+             FROM adviser_ai_groups AS question_group
+             INNER JOIN adviser_ai_reply_rules AS reply_rule
+               ON reply_rule.id = question_group.reply_rule_id
+              AND reply_rule.is_active = TRUE
+             WHERE question_group.run_id = ? AND question_group.status = 'pending'
+             ORDER BY question_group.id`,
+            [runId]
+        );
+        for (const group of pendingGroups) {
+            await SendAiGroup(lecturer.id, runId, group.id, { automated: true });
         }
 
         const [groupStats] = await pool.query(
@@ -435,7 +476,7 @@ async function processSlot(lecturer, slot) {
 
 export async function RunAdviserAiNow(lecturerId) {
     const [lecturers] = await pool.query(
-        `SELECT id, department_id, session, is_verified, ai_auto_replies
+        `SELECT id, department_id, session, is_verified
          FROM users
          WHERE id = ? AND role = 'lecturer'`,
         [lecturerId]
@@ -498,8 +539,7 @@ async function schedulerTick() {
         if (!process.env.GROQ_API_KEY) return;
 
         const [lecturers] = await pool.query(
-            `SELECT users.id, users.department_id, users.session,
-                    users.ai_auto_replies
+            `SELECT users.id, users.department_id, users.session
              FROM users
              WHERE users.role = 'lecturer'
                AND users.is_verified = TRUE

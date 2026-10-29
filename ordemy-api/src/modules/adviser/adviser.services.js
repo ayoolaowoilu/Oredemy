@@ -91,24 +91,51 @@ export async function ListAiRuns(lecturerId) {
                 started_at, completed_at
          FROM adviser_ai_runs
          WHERE lecturer_id = ? AND department_id = ?
-         ORDER BY slot_key DESC
-         LIMIT 24`,
-        [lecturerId, departmentId]
+           AND (
+               id IN (
+                   SELECT recent.id
+                   FROM (
+                       SELECT id
+                       FROM adviser_ai_runs
+                       WHERE lecturer_id = ? AND department_id = ?
+                       ORDER BY slot_key DESC
+                       LIMIT 24
+                   ) AS recent
+               )
+               OR id IN (
+                   SELECT source_group.run_id
+                   FROM adviser_ai_reply_rules AS reply_rule
+                   INNER JOIN adviser_ai_groups AS source_group
+                     ON source_group.id = reply_rule.source_group_id
+                   WHERE reply_rule.lecturer_id = ? AND reply_rule.is_active = TRUE
+               )
+           )
+         ORDER BY slot_key DESC`,
+        [lecturerId, departmentId, lecturerId, departmentId, lecturerId]
     );
     const runIds = runs.map((run) => run.id);
     let groups = [];
     if (runIds.length > 0) {
         const [groupRows] = await pool.query(
-            `SELECT id, run_id, title, question_ids, draft_reply, status,
-                    auto_sent, created_at, sent_at
-             FROM adviser_ai_groups
-             WHERE run_id IN (${runIds.map(() => "?").join(",")})
-             ORDER BY created_at DESC, id DESC`,
+            `SELECT question_group.id, question_group.run_id, question_group.title,
+                    question_group.question_ids, question_group.draft_reply,
+                    question_group.status, question_group.auto_sent,
+                    question_group.reply_rule_id AS matched_reply_rule_id,
+                    source_rule.id AS active_reply_rule_id,
+                    source_rule.reply_text AS active_reply_text,
+                    question_group.created_at, question_group.sent_at
+             FROM adviser_ai_groups AS question_group
+             LEFT JOIN adviser_ai_reply_rules AS source_rule
+               ON source_rule.source_group_id = question_group.id
+              AND source_rule.is_active = TRUE
+             WHERE question_group.run_id IN (${runIds.map(() => "?").join(",")})
+             ORDER BY question_group.created_at DESC, question_group.id DESC`,
             runIds
         );
         groups = groupRows.map((group) => ({
             ...group,
             auto_sent: Boolean(group.auto_sent),
+            has_active_reply_rule: group.active_reply_rule_id !== null,
             question_ids: typeof group.question_ids === "string"
                 ? JSON.parse(group.question_ids)
                 : group.question_ids,
@@ -133,42 +160,6 @@ export async function ListSchedulerLogs(lecturerId) {
         [lecturerId]
     );
     return { data: rows };
-}
-
-export async function GetAiPreferences(lecturerId) {
-    const [rows] = await pool.query(
-        `SELECT ai_auto_replies
-         FROM users
-         WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE`,
-        [lecturerId]
-    );
-    if (!rows[0]) throw new HttpError(403, "Verified lecturer access required");
-    return { data: { ai_auto_replies: Boolean(rows[0].ai_auto_replies) } };
-}
-
-export async function UpdateAiPreferences(lecturerId, body) {
-    if (typeof body?.ai_auto_replies !== "boolean") {
-        throw new HttpError(400, "ai_auto_replies must be true or false");
-    }
-    const [result] = await pool.query(
-        `UPDATE users
-         SET ai_auto_replies = ?
-         WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE`,
-        [body.ai_auto_replies, lecturerId]
-    );
-    if (result.affectedRows === 0) {
-        const [rows] = await pool.query(
-            "SELECT id FROM users WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE",
-            [lecturerId]
-        );
-        if (!rows[0]) throw new HttpError(403, "Verified lecturer access required");
-    }
-    return {
-        data: { ai_auto_replies: body.ai_auto_replies },
-        message: body.ai_auto_replies
-            ? "Automatic AI replies enabled"
-            : "Automatic AI replies disabled",
-    };
 }
 
 export async function ListAiNotifications(lecturerId) {
@@ -267,6 +258,112 @@ export async function ReviewAiGroup(lecturerId, runIdValue, groupIdValue, body) 
     return { message: "Draft updated" };
 }
 
+export async function SaveAiReplyRule(lecturerId, runIdValue, groupIdValue, body) {
+    const runId = parseId(runIdValue, "runId");
+    const groupId = parseId(groupIdValue, "groupId");
+    if (
+        typeof body?.replyText !== "string" ||
+        !body.replyText.trim() ||
+        body.replyText.length > 10000
+    ) {
+        throw new HttpError(400, "replyText must contain 1 to 10000 characters");
+    }
+
+    const [groupRows] = await pool.query(
+        `SELECT question_group.title, question_group.question_ids
+         FROM adviser_ai_groups AS question_group
+         INNER JOIN adviser_ai_runs AS batch_run
+           ON batch_run.id = question_group.run_id
+         WHERE question_group.id = ? AND batch_run.id = ?
+           AND batch_run.lecturer_id = ?`,
+        [groupId, runId, lecturerId]
+    );
+    const group = groupRows[0];
+    if (!group) throw new HttpError(404, "AI question group not found");
+    const questionIds = typeof group.question_ids === "string"
+        ? JSON.parse(group.question_ids)
+        : group.question_ids;
+    if (!Array.isArray(questionIds) || questionIds.length === 0) {
+        throw new HttpError(500, "AI question group has no linked questions");
+    }
+
+    const [exampleRows] = await pool.query(
+        `SELECT DISTINCT query_item.id, query_item.subject, query_item.query,
+                query_item.query_type
+         FROM queries AS query_item
+         INNER JOIN chat_messages AS question_message
+           ON question_message.query_id = query_item.id
+         INNER JOIN chat_conversations AS conversation
+           ON conversation.id = question_message.conversation_id
+         WHERE conversation.type = 'lecturer'
+           AND conversation.lecturer_id = ?
+           AND query_item.id IN (${questionIds.map(() => "?").join(",")})
+         ORDER BY query_item.id`,
+        [lecturerId, ...questionIds]
+    );
+    if (exampleRows.length !== questionIds.length) {
+        throw new HttpError(404, "Some source questions are no longer available");
+    }
+    const examples = exampleRows.map((question) => ({
+        subject: question.subject,
+        question: question.query,
+        category: question.query_type,
+    }));
+    await pool.query(
+        `INSERT INTO adviser_ai_reply_rules
+         (lecturer_id, source_group_id, title, examples, reply_text, is_active)
+         VALUES (?, ?, ?, ?, ?, TRUE)
+         ON DUPLICATE KEY UPDATE
+           title = VALUES(title),
+           examples = VALUES(examples),
+           reply_text = VALUES(reply_text),
+           is_active = TRUE,
+           updated_at = CURRENT_TIMESTAMP`,
+        [
+            lecturerId,
+            groupId,
+            group.title,
+            JSON.stringify(examples),
+            body.replyText.trim(),
+        ]
+    );
+    return {
+        message: "Future questions the AI identifies as this same issue will receive this reply.",
+    };
+}
+
+export async function CancelAiReplyRule(lecturerId, runIdValue, groupIdValue) {
+    const runId = parseId(runIdValue, "runId");
+    const groupId = parseId(groupIdValue, "groupId");
+    const [result] = await pool.query(
+        `UPDATE adviser_ai_reply_rules AS reply_rule
+         INNER JOIN adviser_ai_groups AS source_group
+           ON source_group.id = reply_rule.source_group_id
+         INNER JOIN adviser_ai_runs AS batch_run
+           ON batch_run.id = source_group.run_id
+         SET reply_rule.is_active = FALSE,
+             reply_rule.updated_at = CURRENT_TIMESTAMP
+         WHERE source_group.id = ? AND batch_run.id = ?
+           AND batch_run.lecturer_id = ? AND reply_rule.is_active = TRUE`,
+        [groupId, runId, lecturerId]
+    );
+    if (result.affectedRows === 0) {
+        const [rows] = await pool.query(
+            `SELECT reply_rule.id
+             FROM adviser_ai_reply_rules AS reply_rule
+             INNER JOIN adviser_ai_groups AS source_group
+               ON source_group.id = reply_rule.source_group_id
+             INNER JOIN adviser_ai_runs AS batch_run
+               ON batch_run.id = source_group.run_id
+             WHERE source_group.id = ? AND batch_run.id = ?
+               AND batch_run.lecturer_id = ?`,
+            [groupId, runId, lecturerId]
+        );
+        if (!rows[0]) throw new HttpError(404, "Automatic reply rule not found");
+    }
+    return { message: "Automatic replies for this question group are cancelled." };
+}
+
 export async function SendAiGroup(
     lecturerId,
     runIdValue,
@@ -280,9 +377,13 @@ export async function SendAiGroup(
         await connection.beginTransaction();
         const [groupRows] = await connection.query(
             `SELECT question_group.id, question_group.question_ids,
-                    question_group.draft_reply, question_group.status
+                    question_group.draft_reply, question_group.status,
+                    question_group.reply_rule_id, reply_rule.reply_text,
+                    reply_rule.is_active AS reply_rule_active
              FROM adviser_ai_groups AS question_group
              INNER JOIN adviser_ai_runs AS batch_run ON batch_run.id = question_group.run_id
+             LEFT JOIN adviser_ai_reply_rules AS reply_rule
+               ON reply_rule.id = question_group.reply_rule_id
              WHERE question_group.id = ? AND batch_run.id = ?
                AND batch_run.lecturer_id = ?
              FOR UPDATE`,
@@ -291,6 +392,10 @@ export async function SendAiGroup(
         const group = groupRows[0];
         if (!group || group.status !== "pending") {
             throw new HttpError(404, "Pending AI draft not found");
+        }
+        if (automated && (!group.reply_rule_id || !group.reply_rule_active)) {
+            await connection.commit();
+            return { skipped: true, recipients: 0 };
         }
         const questionIds = typeof group.question_ids === "string"
             ? JSON.parse(group.question_ids)
@@ -319,7 +424,7 @@ export async function SendAiGroup(
                     conversation.id,
                     lecturerId,
                     automated
-                        ? `[AI-assisted automatic response]\n\n${group.draft_reply}`
+                        ? `[AI-assisted automatic response]\n\n${group.reply_text}`
                         : group.draft_reply,
                 ]
             );
