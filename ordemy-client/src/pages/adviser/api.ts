@@ -186,20 +186,6 @@ export const deleteLecturerCourse = (id: number) =>
     token: getToken(),
   });
 
-export const triggerAiRun = () =>
-  apiRequest<{
-    data: {
-      id: number;
-      status: "running" | "completed";
-      question_count: number;
-      error_message: string | null;
-    };
-  }>("/api/adviser/ai-runs/trigger", {
-    method: "POST",
-    token: getToken(),
-    body: {},
-  });
-
 export const fetchAdviserConversations = () =>
   apiRequest<{ data: ChatConversation[] }>("/api/chat/conversations", {
     token: getToken(),

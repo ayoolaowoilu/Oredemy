@@ -111,7 +111,7 @@ export default function AdviserSettings() {
     if (
       enabled &&
       !window.confirm(
-        "Enable automatic AI replies? Scheduled runs and manual AI runs can send AI-generated answers to students without your review. Replies are labeled AI-assisted, but may be inaccurate. You can turn this off at any time.",
+        "Enable automatic AI replies? Scheduled runs can send AI-generated answers to students without your review. Replies are labeled AI-assisted, but may be inaccurate. You can turn this off at any time.",
       )
     ) {
       return;
