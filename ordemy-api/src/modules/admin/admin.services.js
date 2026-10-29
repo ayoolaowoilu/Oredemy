@@ -127,6 +127,24 @@ export async function deleteAdminResource(resourceName, id) {
     return { message: "Record deleted" };
 }
 
+export async function listAllUsers() {
+    const [rows] = await pool.query(
+        `SELECT users.id, users.name, users.email, users.role, users.is_verified,
+                users.session, users.admission_session,
+                users.faculty_id, users.department_id,
+                departments.name AS department,
+                faculties.name AS faculty,
+                schools.name AS school,
+                users.created_at
+         FROM users
+         LEFT JOIN departments ON departments.id = users.department_id
+         LEFT JOIN faculties ON faculties.id = users.faculty_id
+         LEFT JOIN schools ON schools.id = faculties.school_id
+         ORDER BY users.created_at DESC, users.name ASC`
+    );
+    return { data: rows };
+}
+
 export async function listUnverifiedLecturers() {
     const [rows] = await pool.query(
         `SELECT users.id, users.name, users.email, users.faculty_id,

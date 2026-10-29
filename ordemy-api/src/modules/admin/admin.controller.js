@@ -1,11 +1,16 @@
 import {
     createAdminResource,
     deleteAdminResource,
+    listAllUsers,
     listUnverifiedLecturers,
     listAdminResource,
     updateAdminResource,
     verifyLecturer,
 } from "./admin.services.js";
+
+export function listUsers(req, res) {
+    return listAllUsers().then((data) => res.json(data));
+}
 
 export function listResource(req, res) {
     return listAdminResource(req.params.resource).then((data) => res.json(data));

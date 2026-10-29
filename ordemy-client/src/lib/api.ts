@@ -1,8 +1,11 @@
-const API_URL = (
+const configuredUrl = (
   import.meta.env.VITE_API_URL ?? "http://localhost:8081"
 )
   .replace(/\/+$/, "")
   .replace(/\/api$/, "");
+// Dev requests are proxied by Vite (/api -> API) so the browser always uses
+// the dev-server origin. That avoids CORS, including on phones over LAN.
+const API_URL = import.meta.env.DEV ? "" : configuredUrl;
 const TOKEN_KEY = "ordemy_token";
 
 export const tokenStorage = {

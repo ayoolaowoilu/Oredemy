@@ -74,7 +74,7 @@ export default function AdviserClassReps() {
             type="button"
             onClick={() => void loadRequests()}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-[#2501FF]/30 hover:text-[#2501FF] disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF] disabled:opacity-50"
           >
             <RefreshCw size={15} /> Refresh
           </button>
@@ -118,7 +118,7 @@ export default function AdviserClassReps() {
                   type="button"
                   disabled={busy !== null}
                   onClick={() => void decide(request.id, "rejected")}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF] disabled:opacity-50"
                 >
                   <X size={15} /> Reject
                 </button>

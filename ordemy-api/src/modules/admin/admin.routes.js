@@ -5,6 +5,7 @@ import {
     deleteResource,
     listPendingLecturers,
     listResource,
+    listUsers,
     setLecturerVerification,
     updateResource,
 } from "./admin.controller.js";
@@ -15,6 +16,7 @@ const adminOnly = [authenticate, requireAdmin];
 
 router.get("/lecturers/pending", ...adminOnly, listPendingLecturers);
 router.patch("/lecturers/:id/verification", ...adminOnly, setLecturerVerification);
+router.get("/users", ...adminOnly, cacheSuccessfulGet, listUsers);
 router.get("/:resource", ...adminOnly, cacheSuccessfulGet, listResource);
 router.post("/:resource", ...adminOnly, createResource);
 router.patch("/:resource/:id", ...adminOnly, updateResource);
