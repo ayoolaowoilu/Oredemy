@@ -116,7 +116,7 @@ export default function AdviserAi() {
             type="button"
             onClick={() => void loadRuns()}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-[#2501FF]/30 hover:text-[#2501FF] disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF] disabled:opacity-50"
           >
             <RefreshCw size={15} /> Refresh
           </button>
@@ -182,7 +182,7 @@ export default function AdviserAi() {
                     disabled={group.status === "sent"}
                     rows={5}
                     maxLength={10000}
-                    className="w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[#2501FF]/50 focus:bg-white focus:ring-4 focus:ring-[#2501FF]/[0.08] disabled:opacity-70"
+                    className="w-full resize-y rounded-xl border border-[#E9E5FF] bg-[#FCFBFF] px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[#2501FF]/50 focus:bg-white focus:ring-4 focus:ring-[#2501FF]/[0.08] disabled:opacity-70"
                   />
                 </label>
                 {group.status === "pending" && (
@@ -191,7 +191,7 @@ export default function AdviserAi() {
                       type="button"
                       disabled={busy !== null}
                       onClick={() => void saveDraft(run.id, group.id)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF] disabled:opacity-50"
                     >
                       <Check size={15} /> {busy === group.id ? "Working…" : "Save draft"}
                     </button>

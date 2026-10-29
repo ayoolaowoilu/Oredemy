@@ -11,6 +11,10 @@ import StudentChat from "./pages/student/chat";
 import StudentClassRep from "./pages/student/classrep";
 import StudentLayout from "./pages/student/layout";
 import StudentOverview from "./pages/student/overview";
+import StudentProfile from "./pages/student/profile";
+import StudentCurriculum from "./pages/student/curriculum";
+import StudentPayments from "./pages/student/payments";
+import StudentSettings from "./pages/student/settings";
 import StudentQuestions from "./pages/student/questions";
 import AdviserAi from "./pages/adviser/ai";
 import AdviserChat from "./pages/adviser/chat";
@@ -19,7 +23,10 @@ import AdviserLayout from "./pages/adviser/layout";
 import AdviserOverview from "./pages/adviser/overview";
 import AdminLayout from "./pages/admin/layout";
 import AdminOverview from "./pages/admin/overview";
-import AdminSection from "./pages/admin/section";
+import AdminAcademics from "./pages/admin/academics";
+import AdminMoney from "./pages/admin/money";
+import AdminMore from "./pages/admin/more";
+import AdminUsers from "./pages/admin/users";
 
 export default function App() {
   return (
@@ -40,6 +47,10 @@ export default function App() {
           <Route path="questions" element={<StudentQuestions />} />
           <Route path="classrep" element={<StudentClassRep />} />
           <Route path="chat" element={<StudentChat />} />
+          <Route path="curriculum" element={<StudentCurriculum />} />
+          <Route path="payments" element={<StudentPayments />} />
+          <Route path="settings" element={<StudentSettings />} />
+          <Route path="profile" element={<StudentProfile />} />
         </Route>
       </Route>
 
@@ -55,10 +66,10 @@ export default function App() {
       <Route element={<ProtectedRoute roles={["admin"]} />}>
         <Route path="/dashboard/admin" element={<AdminLayout />}>
           <Route index element={<AdminOverview />} />
-          <Route path="users" element={<AdminSection title="Users" />} />
-          <Route path="academics" element={<AdminSection title="Academics" />} />
-          <Route path="money" element={<AdminSection title="Money" />} />
-          <Route path="more" element={<AdminSection title="More" />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="academics" element={<AdminAcademics />} />
+          <Route path="money" element={<AdminMoney />} />
+          <Route path="more" element={<AdminMore />} />
         </Route>
       </Route>
 

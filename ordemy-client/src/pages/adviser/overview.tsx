@@ -120,7 +120,7 @@ export default function AdviserOverview() {
               <Link
                 key={to}
                 to={to}
-                className="group rounded-xl border border-slate-200 p-4 transition-colors hover:border-[#2501FF]/30 hover:bg-[#2501FF]/[0.025]"
+                className="group rounded-2xl border border-[#F0ECFF] p-4 transition-colors hover:border-[#2501FF]/30 hover:bg-[#FCFBFF]"
               >
                 <span className="grid size-9 place-items-center rounded-lg bg-[#2501FF]/[0.08] text-[#2501FF]">
                   <Icon size={17} />

@@ -15,7 +15,7 @@ import { useChatUnreadCount } from "../../hooks/use-chat-unread-count";
 import { UserAvatar } from "../../components/user-avatar";
 
 const links = [
-  { label: "Overview", to: "/dashboard/adviser", icon: LayoutDashboard, end: true },
+  { label: "Home", to: "/dashboard/adviser", icon: LayoutDashboard, end: true },
   { label: "AI review", to: "/dashboard/adviser/ai", icon: Bot },
   { label: "Class reps", to: "/dashboard/adviser/class-reps", icon: CheckCheck },
   { label: "Chats", to: "/dashboard/adviser/chat", icon: MessageCircle },
@@ -32,27 +32,21 @@ export default function AdviserLayout() {
     logout();
     navigate("/login", { replace: true });
   }
-  const currentPage =
-    links.find((link) =>
-      link.end
-        ? location.pathname === link.to
-        : location.pathname.startsWith(link.to),
-    )?.label ?? "Adviser workspace";
 
   const unreadBadge = unreadCount > 99 ? "99+" : unreadCount;
 
   return (
-    <div className="min-h-screen bg-[#f7f8fc] text-slate-900">
+    <div className="font-['Poppins',sans-serif] min-h-screen bg-white text-[#0B1030]">
       <div className="mx-auto flex min-h-screen max-w-[1600px]">
-        <aside className="sticky top-0 hidden h-screen w-[250px] shrink-0 flex-col border-r border-slate-200 bg-white px-5 py-6 lg:flex">
-          <div className="flex flex-col items-start gap-1 px-2">
+        <aside className="sticky top-0 hidden h-screen w-[260px] shrink-0 flex-col border-r border-[#F0ECFF] bg-white px-5 py-7 lg:flex">
+          <NavLink to="/dashboard/adviser" className="px-3">
             <img src="/ordemylogo.svg" alt="Oredemy" className="h-auto w-40 object-contain" />
-            <span className="text-xs text-slate-400">Adviser workspace</span>
-          </div>
-          <p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
-            Department tools
-          </p>
-          <nav className="space-y-1">
+          </NavLink>
+          <span className="ml-3 mt-3 w-fit rounded-full bg-[#F1EDFF] px-3 py-1 text-[11px] font-semibold text-[#2501FF]">
+            Adviser
+          </span>
+
+          <nav className="mt-10 space-y-1">
             {links.map(({ label, to, icon: Icon, end }) => (
               <NavLink
                 key={to}
@@ -60,7 +54,7 @@ export default function AdviserLayout() {
                 end={end}
                 onClick={() => setMenuOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  `flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold transition-colors ${
                     isActive
                       ? "bg-[#2501FF]/[0.07] text-[#2501FF]"
                       : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
@@ -77,16 +71,15 @@ export default function AdviserLayout() {
               </NavLink>
             ))}
           </nav>
-          <div className="mt-auto rounded-2xl bg-[#f4f2ff] p-4">
-            <p className="text-sm font-bold text-slate-900">AI stays in review</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              Nothing generated is sent to students until you approve it.
-            </p>
-          </div>
+
+          <p className="mt-auto px-3 text-xs leading-5 text-slate-400">
+            Bridging the gap between students and advisers
+          </p>
+
           <button
             type="button"
             onClick={signOut}
-            className="mt-5 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+            className="mt-5 flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-900"
           >
             <LogOut size={18} /> Sign out
           </button>
@@ -160,8 +153,8 @@ export default function AdviserLayout() {
         )}
 
         <main className="min-w-0 flex-1">
-          <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3 sm:px-7 lg:px-10">
-            <div className="mx-auto flex max-w-[1260px] items-center justify-between gap-4">
+          <header className="sticky top-0 z-10 border-b border-[#F0ECFF] bg-white px-4 py-4 sm:px-7 lg:px-10">
+            <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <img
                   src="/ordemylogo.svg"
@@ -175,11 +168,12 @@ export default function AdviserLayout() {
                   </p>
                 </div>
               </div>
+
               <div className="flex items-center gap-3">
                 <div className="hidden max-w-[180px] text-right sm:block">
                   <p className="truncate text-sm font-bold text-slate-800">{user?.name}</p>
                   <p className="truncate text-[11px] text-slate-400">
-                    {[user?.department, user?.session].filter(Boolean).join(" · ") || "Verified adviser"}
+                    {[user?.department, user?.session].filter(Boolean).join(" · ") || "Adviser"}
                   </p>
                 </div>
                 <UserAvatar image={user?.image} name={user?.name} className="size-9 text-sm" />
