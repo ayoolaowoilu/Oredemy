@@ -1,4 +1,5 @@
-﻿import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Bot,
   CheckCheck,
@@ -24,6 +25,8 @@ export default function AdviserLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const unreadCount = useChatUnreadCount(user?.id);
 
   function signOut() {
     logout();
