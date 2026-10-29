@@ -41,23 +41,6 @@ const tabs: Array<{
 const inputClass =
   "mt-2 w-full rounded-xl border border-[#E9E5FF] bg-white px-3.5 py-3 text-sm text-[#0B1030] outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10";
 
-const demoSchools: School[] = [
-  { id: -1, name: "University of Lagos", calendar_offset: 0, created_at: "" },
-  { id: -2, name: "Obafemi Awolowo University", calendar_offset: 1, created_at: "" },
-];
-
-const demoFaculties: Faculty[] = [
-  { id: -10, name: "Faculty of Science", school_id: -1, created_at: "" },
-  { id: -11, name: "Faculty of Engineering", school_id: -1, created_at: "" },
-  { id: -12, name: "Faculty of Arts", school_id: -2, created_at: "" },
-];
-
-const demoDepartments: Department[] = [
-  { id: -20, name: "Computer Science", faculty_id: -10, created_at: "" },
-  { id: -21, name: "Mass Communication", faculty_id: -12, created_at: "" },
-  { id: -22, name: "Mechanical Engineering", faculty_id: -11, created_at: "" },
-];
-
 export default function AdminAcademics() {
   const [active, setActive] = useState<AdminResourceName>("schools");
   const [schools, setSchools] = useState<School[]>([]);
@@ -65,7 +48,6 @@ export default function AdminAcademics() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -87,20 +69,12 @@ export default function AdminAcademics() {
       setSchools(schoolResponse.data);
       setFaculties(facultyResponse.data);
       setDepartments(departmentResponse.data);
-      setPreview(false);
     } catch (loadError: unknown) {
-      if (import.meta.env.DEV) {
-        setSchools(demoSchools);
-        setFaculties(demoFaculties);
-        setDepartments(demoDepartments);
-        setPreview(true);
-      } else {
-        setError(
-          loadError instanceof ApiError || loadError instanceof Error
-            ? loadError.message
-            : "Could not load the academic structure.",
-        );
-      }
+      setError(
+        loadError instanceof ApiError || loadError instanceof Error
+          ? loadError.message
+          : "Could not load the academic structure.",
+      );
     } finally {
       setLoading(false);
     }
@@ -118,17 +92,9 @@ export default function AdminAcademics() {
         setSchools(schoolResponse.data);
         setFaculties(facultyResponse.data);
         setDepartments(departmentResponse.data);
-        setPreview(false);
       })
       .catch((loadError: unknown) => {
         if (!activeRequest) return;
-        if (import.meta.env.DEV) {
-          setSchools(demoSchools);
-          setFaculties(demoFaculties);
-          setDepartments(demoDepartments);
-          setPreview(true);
-          return;
-        }
         setError(
           loadError instanceof ApiError || loadError instanceof Error
             ? loadError.message
@@ -195,9 +161,6 @@ export default function AdminAcademics() {
     event.preventDefault();
     setError("");
     setNotice("");
-    if (preview) {
-      return setError("Preview mode: sign in as an admin to save academic changes.");
-    }
     if (!name.trim()) return setError(`Enter a ${activeTab.singular} name.`);
     if (active === "faculties" && !schoolId) {
       return setError("Choose the school this faculty belongs to.");
@@ -236,11 +199,22 @@ export default function AdminAcademics() {
   }
 
   async function remove(id: number) {
-    if (preview) {
-      return setError("Preview mode: sign in as an admin to delete academic records.");
-    }
     const row = rows.find((item) => item.id === id);
-    if (!window.confirm(`Delete ${row?.name ?? "this record"}? This cannot be undone.`)) {
+    let impactWarning = "";
+    if (active === "schools") {
+      const schoolFaculties = faculties.filter((faculty) => faculty.school_id === id);
+      const schoolDepartments = departments.filter((department) =>
+        schoolFaculties.some((faculty) => faculty.id === department.faculty_id),
+      );
+      impactWarning =
+        ` This will also delete ${schoolFaculties.length} faculties and ` +
+        `${schoolDepartments.length} departments, along with related class chats and class-rep requests.`;
+    } else if (active === "faculties") {
+      const departmentCount = departments.filter((department) => department.faculty_id === id).length;
+      impactWarning =
+        ` This will also delete ${departmentCount} departments, along with related class chats and class-rep requests.`;
+    }
+    if (!window.confirm(`Delete ${row?.name ?? "this record"}?${impactWarning} This cannot be undone.`)) {
       return;
     }
     setBusy(true);
@@ -305,13 +279,6 @@ export default function AdminAcademics() {
           {notice}
         </Notice>
       )}
-      {preview && (
-        <Notice tone="warning" onDismiss={() => setPreview(false)}>
-          Preview data shown. Sign in as an admin to manage the real academic
-          structure.
-        </Notice>
-      )}
-
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           icon={<SchoolIcon size={19} />}
