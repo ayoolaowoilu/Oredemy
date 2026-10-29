@@ -44,6 +44,9 @@ export default function App() {
 
       <Route element={<ProtectedRoute roles={["student", "lecturer"]} />}>
         <Route path="/onboarding" element={<Onboarding />} />
+      </Route>
+
+      <Route element={<ProtectedRoute roles={["student"]} />}>
         <Route path="/dashboard/student" element={<StudentLayout />}>
           <Route index element={<StudentOverview />} />
           <Route path="questions" element={<StudentQuestions />} />
