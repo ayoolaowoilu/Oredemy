@@ -9,7 +9,7 @@ export interface AuthContextValue {
   user: UserProfile | null;
   token: string | null;
   loading: boolean;
-  login: (payload: LoginPayload) => Promise<UserProfile>;
+  login: (payload: LoginPayload, remember?: boolean) => Promise<UserProfile>;
   register: (payload: RegisterPayload) => Promise<UserProfile>;
   logout: () => void;
   refreshProfile: () => Promise<void>;

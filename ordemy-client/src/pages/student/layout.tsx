@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+﻿import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   LogOut,
@@ -18,7 +18,13 @@ const links = [
 
 export default function StudentLayout() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const location = useLocation();
+
+  function signOut() {
+    logout();
+    navigate("/login", { replace: true });
+  }
   const currentPage =
     links.find((link) =>
       link.end
@@ -75,7 +81,7 @@ export default function StudentLayout() {
           </div>
           <button
             type="button"
-            onClick={logout}
+            onClick={signOut}
             className="mt-5 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-900"
           >
             <LogOut size={18} /> Sign out
@@ -99,16 +105,16 @@ export default function StudentLayout() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="hidden text-right sm:block">
-                  <p className="text-sm font-bold text-slate-800">{user?.name}</p>
-                  <p className="text-[11px] text-slate-400">
+                <div className="hidden max-w-[180px] text-right sm:block">
+                  <p className="truncate text-sm font-bold text-slate-800">{user?.name}</p>
+                  <p className="truncate text-[11px] text-slate-400">
                     {user?.department ?? "Student"}
                   </p>
                 </div>
                 <UserAvatar image={user?.image} name={user?.name} className="size-9 text-sm" />
                 <button
                   type="button"
-                  onClick={logout}
+                  onClick={signOut}
                   aria-label="Sign out"
                   className="grid size-9 place-items-center rounded-xl text-slate-400 hover:bg-slate-100 lg:hidden"
                 >

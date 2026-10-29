@@ -61,21 +61,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, logout);
   }, [logout]);
 
-  const startSession = useCallback(async (auth: AuthResponse) => {
-    tokenStorage.set(auth.token);
-    try {
-      const profile = await fetchProfile(auth.token);
-      setToken(auth.token);
-      setUser(profile);
-      return profile;
-    } catch (error) {
-      tokenStorage.clear();
-      throw error;
-    }
-  }, []);
+  const startSession = useCallback(
+    async (auth: AuthResponse, remember = true) => {
+      tokenStorage.set(auth.token, remember);
+      try {
+        const profile = await fetchProfile(auth.token);
+        setToken(auth.token);
+        setUser(profile);
+        return profile;
+      } catch (error) {
+        tokenStorage.clear();
+        throw error;
+      }
+    },
+    [],
+  );
 
   const login = useCallback(
-    async (payload: LoginPayload) => startSession(await loginRequest(payload)),
+    async (payload: LoginPayload, remember = true) =>
+      startSession(await loginRequest(payload), remember),
     [startSession],
   );
 

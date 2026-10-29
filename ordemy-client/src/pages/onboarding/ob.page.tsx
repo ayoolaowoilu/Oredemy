@@ -9,6 +9,7 @@ import {
   getCurrentAcademicSession,
 } from "../../utils/level";
 import { compressProfileImage } from "../../utils/compress-image";
+import { BackButton } from "../../components/back-button";
 import {
   EditRequest,
   FetchAcademicStructure,
@@ -168,6 +169,9 @@ export default function Onboarding() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
       <section className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
+        <div className="mb-4">
+          <BackButton label="Back" fallback="/" />
+        </div>
         <div className="mb-8">
           <img
             src="/ordemylogo.svg"
