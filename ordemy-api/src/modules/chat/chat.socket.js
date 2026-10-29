@@ -4,12 +4,54 @@ import {
     SendMessage,
     ValidateConversationId,
 } from "./chat.services.js";
+import pool from "../../config/database.js";
 
 let socketServer;
 
 export function publishChatMessage(message) {
-    if (!socketServer || !message?.conversation_id) return;
+    if (!socketServer || !message?.conversation_id) return Promise.resolve();
     socketServer.to(roomName(message.conversation_id)).emit("chat:message", message);
+
+    return (async () => {
+        const [conversationRows] = await pool.query(
+            `SELECT type, student_id, lecturer_id, class_department_id, class_session
+             FROM chat_conversations
+             WHERE id = ?`,
+            [message.conversation_id]
+        );
+        const conversation = conversationRows[0];
+        if (!conversation) return;
+
+        let recipientIds;
+        if (conversation.type === "class") {
+            const [users] = await pool.query(
+                `SELECT id
+                 FROM users
+                 WHERE department_id = ? AND session = ?
+                   AND (
+                       role = 'student'
+                       OR (role = 'lecturer' AND is_verified = TRUE)
+                   )`,
+                [conversation.class_department_id, conversation.class_session]
+            );
+            recipientIds = users.map(({ id }) => id);
+        } else if (conversation.type === "support") {
+            const [users] = await pool.query(
+                "SELECT id FROM users WHERE role = 'admin' OR id = ?",
+                [conversation.student_id]
+            );
+            recipientIds = users.map(({ id }) => id);
+        } else {
+            recipientIds = [conversation.student_id, conversation.lecturer_id].filter(Boolean);
+        }
+
+        const recipientRooms = recipientIds
+            .filter((userId) => userId !== message.sender_id)
+            .map(userRoom);
+        if (recipientRooms.length) {
+            socketServer.to(recipientRooms).emit("chat:notification", message);
+        }
+    })();
 }
 
 function getToken(socket) {
@@ -27,6 +69,10 @@ function getToken(socket) {
 
 function roomName(conversationId) {
     return `chat:${conversationId}`;
+}
+
+function userRoom(userId) {
+    return `user:${userId}`;
 }
 
 function sendResult(socket, acknowledge, result) {
@@ -62,6 +108,8 @@ export function configureChatSocket(io) {
     });
 
     io.on("connection", (socket) => {
+        void socket.join(userRoom(socket.data.user.id));
+
         socket.on("chat:join", async (payload, acknowledge) => {
             try {
                 const conversationId = payload?.conversationId;
@@ -92,7 +140,9 @@ export function configureChatSocket(io) {
                     socket.data.user,
                     payload?.body
                 );
-                io.to(roomName(message.conversation_id)).emit("chat:message", message);
+                void publishChatMessage(message).catch((error) => {
+                    console.error("[chat] Could not publish message notification:", error);
+                });
                 sendResult(socket, acknowledge, message);
             } catch (error) {
                 sendError(socket, acknowledge, error);
