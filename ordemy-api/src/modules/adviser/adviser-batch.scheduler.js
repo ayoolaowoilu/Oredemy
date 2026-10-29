@@ -137,8 +137,11 @@ async function callGroq(config, questions, replyRules) {
     const ruleContext = replyRules.map((rule) => ({
         id: rule.id,
         title: rule.title,
-        examples: rule.examples,
-        approved_reply: rule.reply_text,
+        examples: rule.examples.slice(0, 3).map((example) => ({
+            subject: String(example.subject ?? "").slice(0, 300),
+            question: String(example.question ?? "").slice(0, 1000),
+            category: String(example.category ?? "").slice(0, 100),
+        })),
     }));
     const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
         method: "POST",
@@ -206,7 +209,7 @@ function validateGroups(groups, questions, replyRules) {
             throw new Error("AI returned an incomplete question group");
         }
         if (
-            group.matched_rule_id !== null &&
+            group.matched_rule_id != null &&
             (!Number.isSafeInteger(Number(group.matched_rule_id)) ||
                 !ruleIds.has(Number(group.matched_rule_id)))
         ) {
@@ -396,7 +399,7 @@ async function processSlot(lecturer, slot) {
                 processedCount += questions.length;
                 const groups = await callGroq(config, questions, replyRules);
                 for (const group of groups) {
-                    const matchedRuleId = group.matched_rule_id === null
+                    const matchedRuleId = group.matched_rule_id == null
                         ? null
                         : Number(group.matched_rule_id);
                     const matchedRule = replyRules.find(

@@ -222,12 +222,6 @@ CREATE TABLE adviser_ai_reply_rules (
         FOREIGN KEY (source_group_id) REFERENCES adviser_ai_groups(id) ON DELETE CASCADE
 );
 
-ALTER TABLE adviser_ai_groups
-    ADD CONSTRAINT fk_adviser_ai_group_reply_rule
-        FOREIGN KEY (reply_rule_id)
-        REFERENCES adviser_ai_reply_rules(id)
-        ON DELETE SET NULL;
-
 CREATE TABLE adviser_ai_notifications (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     lecturer_id VARCHAR(36) NOT NULL,

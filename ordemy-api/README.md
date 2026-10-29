@@ -900,7 +900,7 @@ After applying the schema and course migration, run [`testing/ai-test-seed.sql`]
 
 The seed also creates `ai-student2@example.test`, `ai-student3@example.test`, and `ai-student4@example.test`. Do not use these credentials or run the seed against production.
 
-Sign in as the sample adviser, open **AI review**, and select **Run AI now**. The protected `POST /api/adviser/ai-runs/trigger` route processes lecturer questions from the previous 24 hours immediately, rather than waiting for the scheduled 12:00–17:00 Africa/Lagos window. Configure `GROQ_API_KEY` in the API environment first. Questions must be linked to the lecturer chat and have the lecturer's cohort session. If the run fails, check **AI review** and the API logs.
+With a valid lecturer token, call the protected `POST /api/adviser/ai-runs/trigger` route to process lecturer questions from the previous 24 hours immediately, rather than waiting for the scheduled 12:00–17:00 Africa/Lagos window. Configure `GROQ_API_KEY` in the API environment first. Questions must be linked to the lecturer chat and have the lecturer's cohort session. If the run fails, check **AI review** and the API logs. The AI review page does not expose a manual run button.
 
 Sign in as the sample student to see the current-level course list under **Curriculum**. The adviser can add courses from **Courses** and revoke the seeded representative from **Class reps**.
 
@@ -941,7 +941,7 @@ For chat unread counts on an existing database, run [`migrations/20261029_add_ch
 
 Configure `GROQ_API_KEY` and optionally `GROQ_MODEL` in the **Render API service's Environment** settings (not the frontend's `VITE_` variables). Create a key at [Groq Console API Keys](https://console.groq.com/keys); see [Groq's Quickstart](https://console.groq.com/docs/quickstart) and [current rate limits](https://console.groq.com/docs/rate-limits). API access and free usage/limits can change, so check the current account plan and limits before relying on it. The key is server-only; it is not editable in the adviser dashboard or sent to the client.
 
-Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in the same API environment to enable profile photo uploads. Cloudinary offers a free plan with limits; check [current pricing](https://cloudinary.com/pricing). Keep all values private and out of source control. Groq receives the subject and text of questions selected for grouping. Generated replies remain drafts until an adviser reviews and sends them.
+Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in the same API environment to enable profile photo uploads. Cloudinary offers a free plan with limits; check [current pricing](https://cloudinary.com/pricing). Keep all values private and out of source control. Groq receives the subject and text of questions selected for grouping, plus examples of any lecturer-approved reply rules.
 
 The adviser endpoints are mounted under `/api/adviser` and require an authenticated, verified lecturer assigned to a department:
 
@@ -950,31 +950,19 @@ The adviser endpoints are mounted under `/api/adviser` and require an authentica
 | `GET` | `/api/adviser/dashboard` | Department question totals and pending class-rep requests |
 | `GET` | `/api/adviser/ai-runs` | List scheduler runs and reply drafts, including auto-sent status |
 | `GET` | `/api/adviser/scheduler-logs` | List recent scheduler startup, heartbeat and recovery logs |
-| `GET` | `/api/adviser/ai-preferences` | Get whether this lecturer opted into automatic AI replies |
-| `PATCH` | `/api/adviser/ai-preferences` | Enable or disable automatic AI replies; off by default |
 | `GET` | `/api/adviser/ai-notifications` | List recent AI run notifications and unread count |
 | `PATCH` | `/api/adviser/ai-notifications/:notificationId/read` | Mark one AI notification as read |
 | `PATCH` | `/api/adviser/ai-notifications/read-all` | Mark all AI notifications as read |
 | `POST` | `/api/adviser/ai-runs/trigger` | Immediately group this adviser's linked questions from the previous 24 hours |
 | `PATCH` | `/api/adviser/ai-runs/:runId/groups/:groupId` | Save an edited draft |
 | `POST` | `/api/adviser/ai-runs/:runId/groups/:groupId/send` | Send a reviewed draft to its students |
+| `PUT` | `/api/adviser/ai-runs/:runId/groups/:groupId/reply-rule` | Save or update this group's approved reply for future matching questions |
+| `DELETE` | `/api/adviser/ai-runs/:runId/groups/:groupId/reply-rule` | Cancel automatic replies for this question group |
 
-The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos` when the server-side Groq key is configured. The protected manual trigger can also start a run at any time. Automatic answers are disabled by default; each verified lecturer explicitly opts in through adviser Settings. When enabled, generated groups from scheduled or manual runs are sent as chat replies labeled `[AI-assisted automatic response]`. Students receive the regular chat notification, and the adviser receives a persistent AI notification and real-time workspace alert. When automatic replies are off, groups remain drafts for adviser review. The preference is stored in `users.ai_auto_replies`.
+The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos` when the server-side Groq key is configured. Each group is manual-review-only unless the lecturer selects **Reply to questions like this in future** and saves an approved reply. For later runs, the AI compares incoming question groups with the saved example questions; only groups it identifies as the same issue are answered, using the lecturer-approved reply verbatim. Each rule can be updated or cancelled from its source group. Automatic replies are labeled `[AI-assisted automatic response]`; students receive the regular chat notification, and the adviser receives a persistent AI notification and real-time workspace alert. A model can misclassify similarity, so lecturers should use this for replies they are comfortable sending automatically.
 
-For an existing database, apply [`migrations/20261029_add_ai_auto_replies_notifications.sql`](./migrations/20261029_add_ai_auto_replies_notifications.sql) once after the adviser AI tables have been created. It adds the opt-in preference, auto-sent group marker, and persistent adviser AI notifications. New databases receive these fields and tables through `data.sql`.
+For an existing database, apply [`migrations/20261029_add_ai_auto_replies_notifications.sql`](./migrations/20261029_add_ai_auto_replies_notifications.sql) and then [`migrations/20261029_add_adviser_ai_reply_rules.sql`](./migrations/20261029_add_adviser_ai_reply_rules.sql), after the adviser AI tables exist. The first migration adds the auto-sent group marker and persistent adviser notifications; the second adds per-group approved reply rules. New databases receive these fields and tables through `data.sql`.
 
-The AI preference routes accept and return `ai_auto_replies` as a boolean. Example:
-
-```http
-PATCH /api/adviser/ai-preferences
-Content-Type: application/json
-x-token: <LECTURER_JWT>
-```
-
-```json
-{ "ai_auto_replies": true }
-```
-
-Automatic responses are labeled as AI-generated and are not an official university policy source. Advisers should review the AI prompt/output behavior and disable the setting if their department requires human approval for each response. The scheduler writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
+The reply-rule routes accept `replyText` (1–10,000 characters) when saving. The scheduler writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
 
 Adviser chat uses the existing authenticated Socket.IO endpoint. Verified lecturers can list `/api/chat/class-sessions` for their assigned session and create or open that department group with `POST /api/chat/conversations` using `{ "type": "class", "session": "2022/2023" }`. Student-to-adviser conversations are matched by department and session. Chat messages sent through REST or Socket.IO are broadcast to authorized conversation rooms.

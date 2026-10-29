@@ -48,7 +48,9 @@ export default function AdviserAi() {
         const next = { ...existing };
         for (const run of response.data) {
           for (const group of run.groups) {
-            if (next[group.id] === undefined) next[group.id] = group.draft_reply;
+            if (next[group.id] === undefined) {
+              next[group.id] = group.active_reply_text ?? group.draft_reply;
+            }
           }
         }
         return next;
@@ -345,11 +347,11 @@ export default function AdviserAi() {
                 <label className="mt-5 block">
                   <span className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-400">Reply draft</span>
                   <textarea
-                    value={drafts[group.id] ?? group.draft_reply}
+                    value={drafts[group.id] ?? group.active_reply_text ?? group.draft_reply}
                     onChange={(event) =>
                       setDrafts((current) => ({ ...current, [group.id]: event.target.value }))
                     }
-                    disabled={group.status === "sent"}
+                    disabled={group.status === "sent" && !group.has_active_reply_rule}
                     rows={5}
                     maxLength={10000}
                     className="w-full resize-y rounded-xl border border-[#E9E5FF] bg-[#FCFBFF] px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[#2501FF]/50 focus:bg-white focus:ring-4 focus:ring-[#2501FF]/[0.08] disabled:opacity-70"
@@ -371,7 +373,9 @@ export default function AdviserAi() {
                       <Ban size={15} /> {busy === group.id ? "Working…" : "Cancel future replies"}
                     </button>
                   )}
-                  {(!group.has_active_reply_rule || drafts[group.id] !== group.active_reply_text) && (
+                  {(!group.has_active_reply_rule ||
+                    (drafts[group.id] ?? group.active_reply_text ?? group.draft_reply) !==
+                      group.active_reply_text) && (
                     <button
                       type="button"
                       disabled={busy !== null || !(drafts[group.id] ?? group.draft_reply).trim()}

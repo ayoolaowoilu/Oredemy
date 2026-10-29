@@ -91,9 +91,27 @@ export async function ListAiRuns(lecturerId) {
                 started_at, completed_at
          FROM adviser_ai_runs
          WHERE lecturer_id = ? AND department_id = ?
-         ORDER BY slot_key DESC
-         LIMIT 24`,
-        [lecturerId, departmentId]
+           AND (
+               id IN (
+                   SELECT recent.id
+                   FROM (
+                       SELECT id
+                       FROM adviser_ai_runs
+                       WHERE lecturer_id = ? AND department_id = ?
+                       ORDER BY slot_key DESC
+                       LIMIT 24
+                   ) AS recent
+               )
+               OR id IN (
+                   SELECT source_group.run_id
+                   FROM adviser_ai_reply_rules AS reply_rule
+                   INNER JOIN adviser_ai_groups AS source_group
+                     ON source_group.id = reply_rule.source_group_id
+                   WHERE reply_rule.lecturer_id = ? AND reply_rule.is_active = TRUE
+               )
+           )
+         ORDER BY slot_key DESC`,
+        [lecturerId, departmentId, lecturerId, departmentId, lecturerId]
     );
     const runIds = runs.map((run) => run.id);
     let groups = [];
