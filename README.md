@@ -2,7 +2,6 @@
   <img src="ordemy-client/public/ordemylogo.svg" alt="Oredemy logo" width="260">
 </p>
 
-<h1 align="center">Oredemy</h1>
 
 <p align="center">
   A student support and academic communication platform for students, lecturers, and administrators.
@@ -21,16 +20,37 @@ In other words, “Oredemy app” means the client and API working together, not
 
 ## Screenshots
 
-Screenshots are not included yet. Add the following image files to `docs/screenshots/` to display the main screens here:
+### Student dashboard
 
-| File to add | Suggested screen |
-| --- | --- |
-| `docs/screenshots/student-dashboard.png` | Student dashboard |
-| `docs/screenshots/lecturer-ai-groups.png` | Lecturer AI question groups and reply controls |
-| `docs/screenshots/admin-console.png` | Admin console |
-| `docs/screenshots/mobile-chat.png` | Mobile chat and navigation |
+![Oredemy student dashboard](docs/screenshots/student-dashboard.png)
+
+### Lecturer AI question groups
+
+![Oredemy lecturer AI question groups](docs/screenshots/lecturer-ai-groups.png)
+
+### Admin console
+
+![Oredemy admin console](docs/screenshots/admin-console.png)
+
+### Mobile chat
+
+![Oredemy mobile chat](docs/screenshots/mobile-chat.png)
 
 Use real screenshots from the running app. Before sharing them, hide personal information, access tokens, and other private data.
+
+## Live site and demo accounts
+
+Visit the [Oredemy website](https://ordemy.netlify.app). It uses the API at `https://oredemy.onrender.com`.
+
+These are disposable demo accounts on the non-production site:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `test@gmail.com` | `test123` |
+| Student | `test6@gmail.com` | `test123` |
+| Lecturer | `test4@gmail.com` | `test123` |
+
+Use these accounts only on the demo site. Do not reuse these credentials for production accounts.
 
 ## Run locally
 
