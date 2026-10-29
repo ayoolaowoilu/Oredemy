@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  BookOpen,
   ChevronRight,
   LayoutDashboard,
   LogOut,
@@ -34,6 +35,12 @@ export default function StudentLayout() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const unreadCount = useChatUnreadCount(user?.id);
+  const currentPage =
+    links.find((link) =>
+      link.end
+        ? location.pathname === link.to
+        : location.pathname.startsWith(link.to),
+    )?.label ?? "Student workspace";
 
   function signOut() {
     logout();

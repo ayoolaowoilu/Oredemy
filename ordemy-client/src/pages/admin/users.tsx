@@ -44,71 +44,6 @@ const roleLabel: Record<AdminUser["role"], string> = {
   admin: "Admin",
 };
 
-const demoUsers: AdminUser[] = [
-  {
-    id: "__demo_amina",
-    name: "Amina Yusuf",
-    email: "amina@example.com",
-    role: "student",
-    is_verified: 1,
-    session: "2024/2025",
-    admission_session: "2024/2025",
-    faculty_id: 1,
-    department_id: 1,
-    faculty: "Faculty of Science",
-    department: "Computer Science",
-    school: "University of Lagos",
-    created_at: "2026-09-12T10:00:00.000Z",
-  },
-  {
-    id: "__demo_chidi",
-    name: "Chidi Okonkwo",
-    email: "chidi@example.com",
-    role: "student",
-    is_verified: 1,
-    session: "2023/2024",
-    admission_session: "2023/2024",
-    faculty_id: 2,
-    department_id: 4,
-    faculty: "Faculty of Engineering",
-    department: "Mechanical Engineering",
-    school: "University of Lagos",
-    created_at: "2026-09-10T09:30:00.000Z",
-  },
-  {
-    id: "__demo_bello",
-    name: "Dr. Bello",
-    email: "bello@example.com",
-    role: "lecturer",
-    is_verified: 0,
-    session: "2024/2025",
-    admission_session: null,
-    faculty_id: 1,
-    department_id: 1,
-    faculty: "Faculty of Science",
-    department: "Computer Science",
-    school: "University of Lagos",
-    created_at: "2026-10-01T08:15:00.000Z",
-  },
-  {
-    id: "__demo_admin",
-    name: "Super admin",
-    email: "admin@oredemy.app",
-    role: "admin",
-    is_verified: 1,
-    session: null,
-    admission_session: null,
-    faculty_id: null,
-    department_id: null,
-    faculty: null,
-    department: null,
-    school: null,
-    created_at: "2026-08-01T07:00:00.000Z",
-  },
-];
-
-const isDemo = (user: AdminUser) => user.id.startsWith("__demo_");
-
 export default function AdminUsers() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,21 +58,13 @@ export default function AdminUsers() {
     setError("");
     try {
       const response = await fetchAdminUsers();
-      setUsers(
-        response.data.length === 0 && import.meta.env.DEV
-          ? demoUsers
-          : response.data,
-      );
+      setUsers(response.data);
     } catch (loadError: unknown) {
-      if (import.meta.env.DEV) {
-        setUsers(demoUsers);
-      } else {
-        setError(
-          loadError instanceof ApiError || loadError instanceof Error
-            ? loadError.message
-            : "Could not load the user directory.",
-        );
-      }
+      setError(
+        loadError instanceof ApiError || loadError instanceof Error
+          ? loadError.message
+          : "Could not load the user directory.",
+      );
     } finally {
       setLoading(false);
     }
@@ -148,18 +75,10 @@ export default function AdminUsers() {
     fetchAdminUsers()
       .then((response) => {
         if (!active) return;
-        if (response.data.length === 0 && import.meta.env.DEV) {
-          setUsers(demoUsers);
-        } else {
-          setUsers(response.data);
-        }
+        setUsers(response.data);
       })
       .catch((loadError: unknown) => {
         if (!active) return;
-        if (import.meta.env.DEV) {
-          setUsers(demoUsers);
-          return;
-        }
         setError(
           loadError instanceof ApiError || loadError instanceof Error
             ? loadError.message
@@ -183,6 +102,7 @@ export default function AdminUsers() {
         user.name.toLowerCase().includes(needle) ||
         user.email.toLowerCase().includes(needle) ||
         (user.department ?? "").toLowerCase().includes(needle) ||
+        (user.faculty ?? "").toLowerCase().includes(needle) ||
         (user.school ?? "").toLowerCase().includes(needle);
       return byRole && byQuery;
     });
@@ -197,15 +117,6 @@ export default function AdminUsers() {
   async function approve(user: AdminUser) {
     setError("");
     setNotice("");
-    if (isDemo(user)) {
-      setUsers((current) =>
-        current.map((item) =>
-          item.id === user.id ? { ...item, is_verified: true } : item,
-        ),
-      );
-      setNotice(`${user.name} is now verified as an adviser.`);
-      return;
-    }
     setBusyId(user.id);
     try {
       await setLecturerVerification(user.id, true);
@@ -367,7 +278,7 @@ export default function AdminUsers() {
                         )}
                       </div>
                       <p className="mt-1 truncate text-xs text-slate-400">
-                        {[user.email, user.department, user.school]
+                        {[user.email, user.department, user.faculty, user.school]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>

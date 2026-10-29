@@ -27,6 +27,12 @@ export default function AdviserLayout() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const unreadCount = useChatUnreadCount(user?.id);
+  const currentPage =
+    links.find((link) =>
+      link.end
+        ? location.pathname === link.to
+        : location.pathname.startsWith(link.to),
+    )?.label ?? "Adviser workspace";
 
   function signOut() {
     logout();
