@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  BellRing,
   Bot,
   CheckCheck,
   ChevronRight,
@@ -15,6 +16,7 @@ import {
 import { useAuth } from "../../context/useAuth";
 import { useChatUnreadCount } from "../../hooks/use-chat-unread-count";
 import { UserAvatar } from "../../components/user-avatar";
+import { connectAdviserSocket, fetchAiNotifications, type AiNotification } from "./api";
 
 const links = [
   { label: "Home", to: "/dashboard/adviser", icon: LayoutDashboard, end: true },
@@ -30,6 +32,8 @@ export default function AdviserLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [aiUnread, setAiUnread] = useState(0);
+  const [aiToast, setAiToast] = useState<AiNotification | null>(null);
   const unreadCount = useChatUnreadCount(user?.id);
   const currentPage =
     links.find((link) =>
@@ -44,6 +48,36 @@ export default function AdviserLayout() {
   }
 
   const unreadBadge = unreadCount > 99 ? "99+" : unreadCount;
+  const aiUnreadBadge = aiUnread > 99 ? "99+" : aiUnread;
+
+  useEffect(() => {
+    let active = true;
+    async function refreshAiNotificationCount() {
+      try {
+        const response = await fetchAiNotifications();
+        if (active) setAiUnread(response.unread_count);
+      } catch (error: unknown) {
+        console.error("[adviser] Could not load AI notification count:", error);
+      }
+    }
+    void refreshAiNotificationCount();
+    window.addEventListener("ordemy:ai-notifications-changed", refreshAiNotificationCount);
+    return () => {
+      active = false;
+      window.removeEventListener("ordemy:ai-notifications-changed", refreshAiNotificationCount);
+    };
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const socket = connectAdviserSocket();
+    socket.on("adviser:ai-notification", (notification: AiNotification) => {
+      setAiUnread((count) => count + 1);
+      setAiToast(notification);
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   return (
     <div className="font-['Poppins',sans-serif] min-h-screen bg-white text-[#0B1030]">
@@ -76,6 +110,11 @@ export default function AdviserLayout() {
                 {label === "Chats" && unreadCount > 0 && (
                   <span className="grid min-w-5 place-items-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                     {unreadBadge}
+                  </span>
+                )}
+                {label === "AI review" && aiUnread > 0 && (
+                  <span className="grid min-w-5 place-items-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {aiUnreadBadge}
                   </span>
                 )}
               </NavLink>
@@ -147,6 +186,11 @@ export default function AdviserLayout() {
                         {unreadBadge}
                       </span>
                     )}
+                    {label === "AI review" && aiUnread > 0 && (
+                      <span className="grid min-w-5 place-items-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        {aiUnreadBadge}
+                      </span>
+                    )}
                     <ChevronRight size={15} className="text-slate-300" />
                   </NavLink>
                 ))}
@@ -163,6 +207,32 @@ export default function AdviserLayout() {
         )}
 
         <main className="min-w-0 flex-1">
+          {aiToast && (
+            <div className="fixed bottom-4 right-4 z-50 w-[min(92vw,420px)] rounded-2xl border border-[#2501FF]/15 bg-white p-4 shadow-xl">
+              <div className="flex items-start gap-3">
+                <BellRing size={18} className="mt-0.5 shrink-0 text-[#2501FF]" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-slate-950">AI question update</p>
+                  <p className="mt-1 text-sm leading-5 text-slate-600">{aiToast.message}</p>
+                  <Link
+                    to="/dashboard/adviser/ai"
+                    onClick={() => setAiToast(null)}
+                    className="mt-2 inline-block text-xs font-bold text-[#2501FF] hover:underline"
+                  >
+                    View AI review
+                  </Link>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAiToast(null)}
+                  aria-label="Dismiss AI notification"
+                  className="rounded-lg px-2 py-1 text-xs font-bold text-slate-400 hover:bg-slate-100"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )}
           <header className="sticky top-0 z-10 border-b border-[#F0ECFF] bg-white px-4 py-4 sm:px-7 lg:px-10">
             <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4">
               <div className="flex items-center gap-3">

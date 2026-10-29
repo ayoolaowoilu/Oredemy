@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bot, Check, Clock3, RefreshCw, Send, Sparkles } from "lucide-react";
+import { Bell, Bot, Check, Clock3, RefreshCw, Send, Sparkles } from "lucide-react";
 import { ApiError } from "../../lib/api";
 import {
+  connectAdviserSocket,
   fetchAiRuns,
+  fetchAiNotifications,
   fetchSchedulerLogs,
+  markAiNotificationRead,
+  markAllAiNotificationsRead,
   sendAiDraft,
   triggerAiRun,
   updateAiDraft,
+  type AiNotification,
   type AiRun,
   type SchedulerLog,
 } from "./api";
@@ -22,6 +27,7 @@ function formatDate(value: string) {
 export default function AdviserAi() {
   const [runs, setRuns] = useState<AiRun[]>([]);
   const [schedulerLogs, setSchedulerLogs] = useState<SchedulerLog[]>([]);
+  const [notifications, setNotifications] = useState<AiNotification[]>([]);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
@@ -58,12 +64,77 @@ export default function AdviserAi() {
     }
   }, []);
 
+  const loadNotifications = useCallback(async () => {
+    try {
+      const response = await fetchAiNotifications();
+      setNotifications(response.data);
+    } catch (loadError: unknown) {
+      setError(
+        loadError instanceof ApiError || loadError instanceof Error
+          ? loadError.message
+          : "Could not load AI notifications.",
+      );
+    }
+  }, []);
+
   useEffect(() => {
     async function initialize() {
       await loadRuns();
     }
     void initialize();
   }, [loadRuns]);
+
+  useEffect(() => {
+    async function initialize() {
+      await loadNotifications();
+    }
+    void initialize();
+
+    const socket = connectAdviserSocket();
+    socket.on("adviser:ai-notification", (notification: AiNotification) => {
+      setNotifications((current) => [
+        notification,
+        ...current.filter((item) => item.id !== notification.id),
+      ].slice(0, 30));
+      setNotice(notification.message);
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, [loadNotifications]);
+
+  async function markNotificationRead(notification: AiNotification) {
+    if (notification.is_read) return;
+    try {
+      await markAiNotificationRead(notification.id);
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, is_read: true } : item,
+        ),
+      );
+      window.dispatchEvent(new Event("ordemy:ai-notifications-changed"));
+    } catch (readError: unknown) {
+      setError(
+        readError instanceof ApiError || readError instanceof Error
+          ? readError.message
+          : "Could not mark this notification as read.",
+      );
+    }
+  }
+
+  async function markAllNotificationsRead() {
+    try {
+      await markAllAiNotificationsRead();
+      setNotifications((current) => current.map((item) => ({ ...item, is_read: true })));
+      window.dispatchEvent(new Event("ordemy:ai-notifications-changed"));
+    } catch (readError: unknown) {
+      setError(
+        readError instanceof ApiError || readError instanceof Error
+          ? readError.message
+          : "Could not mark notifications as read.",
+      );
+    }
+  }
 
   async function saveDraft(runId: number, groupId: number) {
     setBusy(groupId);
@@ -136,7 +207,7 @@ export default function AdviserAi() {
       <AdviserPageIntro
         eyebrow="AI question assistant"
         title="Grouped questions"
-        description="Review similar student questions and edit the suggested response. Sending is always a separate adviser action."
+        description="Review similar student questions and manage AI-assisted replies. Automatic sending is optional and controlled in Settings."
         action={
           <div className="flex flex-wrap gap-2">
             <button
@@ -165,9 +236,64 @@ export default function AdviserAi() {
       <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#2501FF]/15 bg-[#2501FF]/[0.04] p-4">
         <Sparkles size={18} className="mt-0.5 shrink-0 text-[#2501FF]" />
         <p className="text-sm leading-6 text-slate-700">
-          Groups run hourly from 12pm–5pm Africa/Lagos, or you can run a test manually. Manual runs include lecturer questions from the last 24 hours. AI sees the question subject and text. A draft can only reach students after you save your edits and explicitly send it.
+          Groups run hourly from 12pm–5pm Africa/Lagos, or you can run a test manually. Manual runs include lecturer questions from the last 24 hours. AI sees the question subject and text. By default, replies wait for your review. If you enable automatic replies in Settings, scheduled and manual runs can send AI-labeled answers directly; students are notified in chat.
         </p>
       </div>
+      <AdviserCard className="mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-xl bg-[#2501FF]/[0.08] text-[#2501FF]">
+              <Bell size={18} />
+            </span>
+            <div>
+              <h2 className="font-bold text-slate-950">AI notifications</h2>
+              <p className="text-xs text-slate-500">
+                {notifications.filter((item) => !item.is_read).length} unread
+              </p>
+            </div>
+          </div>
+          {notifications.some((item) => !item.is_read) && (
+            <button
+              type="button"
+              onClick={() => void markAllNotificationsRead()}
+              className="text-xs font-bold text-[#2501FF] hover:underline"
+            >
+              Mark all as read
+            </button>
+          )}
+        </div>
+        {notifications.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">
+            You’ll be notified here when scheduled AI question groups are ready or automatically answered.
+          </p>
+        ) : (
+          <ul className="mt-4 divide-y divide-slate-100">
+            {notifications.slice(0, 5).map((notification) => (
+              <li key={notification.id}>
+                <button
+                  type="button"
+                  onClick={() => void markNotificationRead(notification)}
+                  className={`flex w-full items-start gap-3 py-3 text-left ${
+                    notification.is_read ? "opacity-60" : ""
+                  }`}
+                >
+                  <span
+                    className={`mt-1.5 size-2 shrink-0 rounded-full ${
+                      notification.is_read ? "bg-slate-300" : "bg-[#2501FF]"
+                    }`}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-slate-700">{notification.message}</span>
+                    <span className="mt-1 block text-xs text-slate-400">
+                      {formatDate(notification.created_at)}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </AdviserCard>
       {loading && !runs.length ? (
         <div className="grid gap-4">
           {[1, 2].map((item) => (
@@ -194,7 +320,7 @@ export default function AdviserAi() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-lg font-bold text-slate-950">{group.title}</h2>
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${group.status === "sent" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
-                        {group.status === "sent" ? "Sent" : "Needs review"}
+                        {group.auto_sent ? "Auto-sent" : group.status === "sent" ? "Sent" : "Needs review"}
                       </span>
                       {run.severity === "critical" && (
                         <span className="rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-bold uppercase text-rose-700">High volume day</span>

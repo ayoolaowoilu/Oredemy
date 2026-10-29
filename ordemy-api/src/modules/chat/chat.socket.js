@@ -54,6 +54,11 @@ export function publishChatMessage(message) {
     })();
 }
 
+export function publishAdviserAiNotification(lecturerId, notification) {
+    if (!socketServer || !lecturerId || !notification) return;
+    socketServer.to(userRoom(lecturerId)).emit("adviser:ai-notification", notification);
+}
+
 function getToken(socket) {
     const authToken = socket.handshake.auth?.token;
     if (typeof authToken === "string") return authToken;

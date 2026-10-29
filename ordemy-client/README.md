@@ -64,9 +64,9 @@ On the **Class reps** page, lecturers review pending applications and see approv
 
 ## Adviser AI
 
-The **AI review** page lists generated question groups and drafts. Lecturers can edit and save a draft, then explicitly send it; the AI does not send responses automatically.
+The **AI review** page lists generated question groups and drafts. Automatic replies are **off by default**. In adviser **Settings**, the lecturer can opt in to let scheduled runs (and manual **Run AI now** runs) send AI-labeled answers for the groups they generate, without review. The opt-in prompt explains this behavior, and the lecturer can disable it at any time. When off, drafts stay in AI review until the lecturer edits/sends them.
 
-The scheduler runs hourly between 12:00 and 17:00 Africa/Lagos when `GROQ_API_KEY` is configured on the API. **Run AI now** starts an immediate run for the adviser's linked questions from the previous 24 hours. An adviser needs to be verified, assigned to a department and cohort, and have recent questions linked to their lecturer chat.
+The scheduler runs hourly between 12:00 and 17:00 Africa/Lagos when `GROQ_API_KEY` is configured on the API. **Run AI now** starts an immediate run for the adviser's linked questions from the previous 24 hours. An adviser needs to be verified, assigned to a department and cohort, and have recent questions linked to their lecturer chat. AI run notifications appear in the adviser workspace and AI review page. Students receive the automatic answer as a chat message and their normal chat notification.
 
 To try this flow, use the test-only SQL seed and sample accounts documented in the [API README](../ordemy-api/README.md#testing-courses-class-rep-revocation-and-ai-grouping). Never run test seed data against production.
 

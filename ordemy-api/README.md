@@ -948,12 +948,33 @@ The adviser endpoints are mounted under `/api/adviser` and require an authentica
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/adviser/dashboard` | Department question totals and pending class-rep requests |
-| `GET` | `/api/adviser/ai-runs` | List scheduler runs and reply drafts |
+| `GET` | `/api/adviser/ai-runs` | List scheduler runs and reply drafts, including auto-sent status |
 | `GET` | `/api/adviser/scheduler-logs` | List recent scheduler startup, heartbeat and recovery logs |
+| `GET` | `/api/adviser/ai-preferences` | Get whether this lecturer opted into automatic AI replies |
+| `PATCH` | `/api/adviser/ai-preferences` | Enable or disable automatic AI replies; off by default |
+| `GET` | `/api/adviser/ai-notifications` | List recent AI run notifications and unread count |
+| `PATCH` | `/api/adviser/ai-notifications/:notificationId/read` | Mark one AI notification as read |
+| `PATCH` | `/api/adviser/ai-notifications/read-all` | Mark all AI notifications as read |
 | `POST` | `/api/adviser/ai-runs/trigger` | Immediately group this adviser's linked questions from the previous 24 hours |
 | `PATCH` | `/api/adviser/ai-runs/:runId/groups/:groupId` | Save an edited draft |
 | `POST` | `/api/adviser/ai-runs/:runId/groups/:groupId/send` | Send a reviewed draft to its students |
 
-The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos` when the server-side Groq key is configured. The protected manual trigger can also start a run at any time. It writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
+The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos` when the server-side Groq key is configured. The protected manual trigger can also start a run at any time. Automatic answers are disabled by default; each verified lecturer explicitly opts in through adviser Settings. When enabled, generated groups from scheduled or manual runs are sent as chat replies labeled `[AI-assisted automatic response]`. Students receive the regular chat notification, and the adviser receives a persistent AI notification and real-time workspace alert. When automatic replies are off, groups remain drafts for adviser review. The preference is stored in `users.ai_auto_replies`.
+
+For an existing database, apply [`migrations/20261029_add_ai_auto_replies_notifications.sql`](./migrations/20261029_add_ai_auto_replies_notifications.sql) once after the adviser AI tables have been created. It adds the opt-in preference, auto-sent group marker, and persistent adviser AI notifications. New databases receive these fields and tables through `data.sql`.
+
+The AI preference routes accept and return `ai_auto_replies` as a boolean. Example:
+
+```http
+PATCH /api/adviser/ai-preferences
+Content-Type: application/json
+x-token: <LECTURER_JWT>
+```
+
+```json
+{ "ai_auto_replies": true }
+```
+
+Automatic responses are labeled as AI-generated and are not an official university policy source. Advisers should review the AI prompt/output behavior and disable the setting if their department requires human approval for each response. The scheduler writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
 
 Adviser chat uses the existing authenticated Socket.IO endpoint. Verified lecturers can list `/api/chat/class-sessions` for their assigned session and create or open that department group with `POST /api/chat/conversations` using `{ "type": "class", "session": "2022/2023" }`. Student-to-adviser conversations are matched by department and session. Chat messages sent through REST or Socket.IO are broadcast to authorized conversation rooms.

@@ -1,9 +1,14 @@
 import {
     GetAdviserDashboard,
+    GetAiPreferences,
+    ListAiNotifications,
     ListAiRuns,
     ListSchedulerLogs,
+    MarkAiNotificationRead,
+    MarkAllAiNotificationsRead,
     ReviewAiGroup,
     SendAiGroup,
+    UpdateAiPreferences,
 } from "./adviser.services.js";
 import { RunAdviserAiNow } from "./adviser-batch.scheduler.js";
 
@@ -17,6 +22,32 @@ export async function listAiRuns(req, res) {
 
 export async function listSchedulerLogs(req, res) {
     return res.status(200).json(await ListSchedulerLogs(req.authUser.id));
+}
+
+export async function getAiPreferences(req, res) {
+    return res.status(200).json(await GetAiPreferences(req.authUser.id));
+}
+
+export async function updateAiPreferences(req, res) {
+    return res.status(200).json(
+        await UpdateAiPreferences(req.authUser.id, req.body)
+    );
+}
+
+export async function listAiNotifications(req, res) {
+    return res.status(200).json(await ListAiNotifications(req.authUser.id));
+}
+
+export async function markAiNotificationRead(req, res) {
+    return res.status(200).json(
+        await MarkAiNotificationRead(req.authUser.id, req.params.notificationId)
+    );
+}
+
+export async function markAllAiNotificationsRead(req, res) {
+    return res.status(200).json(
+        await MarkAllAiNotificationsRead(req.authUser.id)
+    );
 }
 
 export async function runAiNow(req, res) {

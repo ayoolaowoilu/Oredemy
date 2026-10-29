@@ -1,6 +1,9 @@
 import pool from "../../config/database.js";
 import { HttpError } from "../../utils/http-error.js";
-import { publishChatMessage } from "../chat/chat.socket.js";
+import {
+    publishAdviserAiNotification,
+    publishChatMessage,
+} from "../chat/chat.socket.js";
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 const DEFAULT_MODEL = "openai/gpt-oss-20b";
@@ -97,7 +100,7 @@ export async function ListAiRuns(lecturerId) {
     if (runIds.length > 0) {
         const [groupRows] = await pool.query(
             `SELECT id, run_id, title, question_ids, draft_reply, status,
-                    created_at, sent_at
+                    auto_sent, created_at, sent_at
              FROM adviser_ai_groups
              WHERE run_id IN (${runIds.map(() => "?").join(",")})
              ORDER BY created_at DESC, id DESC`,
@@ -105,6 +108,7 @@ export async function ListAiRuns(lecturerId) {
         );
         groups = groupRows.map((group) => ({
             ...group,
+            auto_sent: Boolean(group.auto_sent),
             question_ids: typeof group.question_ids === "string"
                 ? JSON.parse(group.question_ids)
                 : group.question_ids,
@@ -129,6 +133,110 @@ export async function ListSchedulerLogs(lecturerId) {
         [lecturerId]
     );
     return { data: rows };
+}
+
+export async function GetAiPreferences(lecturerId) {
+    const [rows] = await pool.query(
+        `SELECT ai_auto_replies
+         FROM users
+         WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE`,
+        [lecturerId]
+    );
+    if (!rows[0]) throw new HttpError(403, "Verified lecturer access required");
+    return { data: { ai_auto_replies: Boolean(rows[0].ai_auto_replies) } };
+}
+
+export async function UpdateAiPreferences(lecturerId, body) {
+    if (typeof body?.ai_auto_replies !== "boolean") {
+        throw new HttpError(400, "ai_auto_replies must be true or false");
+    }
+    const [result] = await pool.query(
+        `UPDATE users
+         SET ai_auto_replies = ?
+         WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE`,
+        [body.ai_auto_replies, lecturerId]
+    );
+    if (result.affectedRows === 0) {
+        const [rows] = await pool.query(
+            "SELECT id FROM users WHERE id = ? AND role = 'lecturer' AND is_verified = TRUE",
+            [lecturerId]
+        );
+        if (!rows[0]) throw new HttpError(403, "Verified lecturer access required");
+    }
+    return {
+        data: { ai_auto_replies: body.ai_auto_replies },
+        message: body.ai_auto_replies
+            ? "Automatic AI replies enabled"
+            : "Automatic AI replies disabled",
+    };
+}
+
+export async function ListAiNotifications(lecturerId) {
+    const [rows] = await pool.query(
+        `SELECT id, run_id, message, is_read, created_at
+         FROM adviser_ai_notifications
+         WHERE lecturer_id = ?
+         ORDER BY created_at DESC, id DESC
+         LIMIT 30`,
+        [lecturerId]
+    );
+    return {
+        data: rows.map((row) => ({ ...row, is_read: Boolean(row.is_read) })),
+        unread_count: rows.filter((row) => !row.is_read).length,
+    };
+}
+
+export async function MarkAiNotificationRead(lecturerId, notificationIdValue) {
+    const notificationId = parseId(notificationIdValue, "notificationId");
+    const [result] = await pool.query(
+        `UPDATE adviser_ai_notifications
+         SET is_read = TRUE
+         WHERE id = ? AND lecturer_id = ?`,
+        [notificationId, lecturerId]
+    );
+    if (result.affectedRows === 0) {
+        const [rows] = await pool.query(
+            "SELECT id FROM adviser_ai_notifications WHERE id = ? AND lecturer_id = ?",
+            [notificationId, lecturerId]
+        );
+        if (!rows[0]) throw new HttpError(404, "AI notification not found");
+    }
+    return { message: "Notification marked as read" };
+}
+
+export async function MarkAllAiNotificationsRead(lecturerId) {
+    await pool.query(
+        `UPDATE adviser_ai_notifications
+         SET is_read = TRUE
+         WHERE lecturer_id = ? AND is_read = FALSE`,
+        [lecturerId]
+    );
+    return { message: "Notifications marked as read" };
+}
+
+export async function CreateAiRunNotification(
+    lecturerId,
+    runId,
+    groupCount,
+    autoSentCount,
+) {
+    if (groupCount < 1) return;
+    const message = autoSentCount > 0
+        ? `AI grouped ${groupCount} similar question${groupCount === 1 ? "" : "s"} and automatically answered ${autoSentCount} group${autoSentCount === 1 ? "" : "s"}.`
+        : `AI grouped similar student questions into ${groupCount} group${groupCount === 1 ? "" : "s"} for your review.`;
+    const [result] = await pool.query(
+        `INSERT IGNORE INTO adviser_ai_notifications (lecturer_id, run_id, message)
+         VALUES (?, ?, ?)`,
+        [lecturerId, runId, message]
+    );
+    if (result.affectedRows === 0) return;
+    publishAdviserAiNotification(lecturerId, {
+        id: result.insertId,
+        run_id: runId,
+        message,
+        is_read: false,
+        created_at: new Date().toISOString(),
+    });
 }
 
 function parseId(value, field) {
@@ -159,7 +267,12 @@ export async function ReviewAiGroup(lecturerId, runIdValue, groupIdValue, body) 
     return { message: "Draft updated" };
 }
 
-export async function SendAiGroup(lecturerId, runIdValue, groupIdValue) {
+export async function SendAiGroup(
+    lecturerId,
+    runIdValue,
+    groupIdValue,
+    { automated = false } = {}
+) {
     const runId = parseId(runIdValue, "runId");
     const groupId = parseId(groupIdValue, "groupId");
     const connection = await pool.getConnection();
@@ -202,7 +315,13 @@ export async function SendAiGroup(lecturerId, runIdValue, groupIdValue) {
             const [messageResult] = await connection.query(
                 `INSERT INTO chat_messages (conversation_id, sender_id, body)
                  VALUES (?, ?, ?)`,
-                [conversation.id, lecturerId, group.draft_reply]
+                [
+                    conversation.id,
+                    lecturerId,
+                    automated
+                        ? `[AI-assisted automatic response]\n\n${group.draft_reply}`
+                        : group.draft_reply,
+                ]
             );
             await connection.query(
                 "UPDATE chat_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -221,9 +340,10 @@ export async function SendAiGroup(lecturerId, runIdValue, groupIdValue) {
             conversation.message = messageRows[0];
         }
         await connection.query(
-            `UPDATE adviser_ai_groups SET status = 'sent', sent_at = CURRENT_TIMESTAMP
+            `UPDATE adviser_ai_groups
+             SET status = 'sent', sent_at = CURRENT_TIMESTAMP, auto_sent = ?
              WHERE id = ?`,
-            [groupId]
+                [automated, groupId]
         );
         await connection.commit();
         for (const conversation of conversationRows) {
