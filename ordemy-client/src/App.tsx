@@ -19,8 +19,10 @@ import StudentQuestions from "./pages/student/questions";
 import AdviserAi from "./pages/adviser/ai";
 import AdviserChat from "./pages/adviser/chat";
 import AdviserClassReps from "./pages/adviser/class-reps";
+import AdviserCourses from "./pages/adviser/courses";
 import AdviserLayout from "./pages/adviser/layout";
 import AdviserOverview from "./pages/adviser/overview";
+import AdviserSettings from "./pages/adviser/settings";
 import AdminLayout from "./pages/admin/layout";
 import AdminOverview from "./pages/admin/overview";
 import AdminAcademics from "./pages/admin/academics";
@@ -59,7 +61,9 @@ export default function App() {
           <Route index element={<AdviserOverview />} />
           <Route path="ai" element={<AdviserAi />} />
           <Route path="class-reps" element={<AdviserClassReps />} />
+          <Route path="courses" element={<AdviserCourses />} />
           <Route path="chat" element={<AdviserChat />} />
+          <Route path="settings" element={<AdviserSettings />} />
         </Route>
       </Route>
 

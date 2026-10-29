@@ -5,6 +5,7 @@ import {
   fetchAiRuns,
   fetchSchedulerLogs,
   sendAiDraft,
+  triggerAiRun,
   updateAiDraft,
   type AiRun,
   type SchedulerLog,
@@ -23,6 +24,7 @@ export default function AdviserAi() {
   const [schedulerLogs, setSchedulerLogs] = useState<SchedulerLog[]>([]);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
+  const [triggering, setTriggering] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -101,6 +103,30 @@ export default function AdviserAi() {
     }
   }
 
+  async function runNow() {
+    setTriggering(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await triggerAiRun();
+      setNotice(
+        result.data.status === "running"
+          ? "AI run started. Refresh in a moment to see its results."
+          : `AI run completed for ${result.data.question_count} recent question${result.data.question_count === 1 ? "" : "s"}.`,
+      );
+      await loadRuns();
+    } catch (runError: unknown) {
+      await loadRuns();
+      setError(
+        runError instanceof ApiError || runError instanceof Error
+          ? runError.message
+          : "Could not start an AI test run.",
+      );
+    } finally {
+      setTriggering(false);
+    }
+  }
+
   const groups = runs.flatMap((run) =>
     run.groups.map((group) => ({ ...group, runStatus: run.status, runKey: run.slot_key })),
   );
@@ -112,14 +138,24 @@ export default function AdviserAi() {
         title="Grouped questions"
         description="Review similar student questions and edit the suggested response. Sending is always a separate adviser action."
         action={
-          <button
-            type="button"
-            onClick={() => void loadRuns()}
-            disabled={loading}
-            className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF] disabled:opacity-50"
-          >
-            <RefreshCw size={15} /> Refresh
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void runNow()}
+              disabled={triggering}
+              className="inline-flex items-center gap-2 rounded-full bg-[#2501FF] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1d00d6] disabled:opacity-50"
+            >
+              <Sparkles size={15} /> {triggering ? "Running…" : "Run AI now"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadRuns()}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF] disabled:opacity-50"
+            >
+              <RefreshCw size={15} /> Refresh
+            </button>
+          </div>
         }
       />
       {error && <AdviserNotice dismiss={() => setError("")}>{error}</AdviserNotice>}
@@ -129,7 +165,7 @@ export default function AdviserAi() {
       <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#2501FF]/15 bg-[#2501FF]/[0.04] p-4">
         <Sparkles size={18} className="mt-0.5 shrink-0 text-[#2501FF]" />
         <p className="text-sm leading-6 text-slate-700">
-          Groups run hourly from 12pm–5pm Africa/Lagos. AI sees the question subject and text. A draft can only reach students after you save your edits and explicitly send it.
+          Groups run hourly from 12pm–5pm Africa/Lagos, or you can run a test manually. Manual runs include lecturer questions from the last 24 hours. AI sees the question subject and text. A draft can only reach students after you save your edits and explicitly send it.
         </p>
       </div>
       {loading && !runs.length ? (

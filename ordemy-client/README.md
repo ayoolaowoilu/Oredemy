@@ -1,78 +1,81 @@
-# React + TypeScript + Vite
+# Oredemy Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React, TypeScript, and Vite application for Oredemy students, lecturers, and administrators.
 
-Currently, two official plugins are available:
+For API setup, database migrations, endpoints, and the AI test seed, see the [API README](../ordemy-api/README.md).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Requirements
 
-## React Compiler
+- Node.js 22 or later
+- The Oredemy API running locally or deployed
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+## Run locally
 
-Note: This will impact Vite dev & build performances.
-You can also try [the experimental native React Compiler support in plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md#rust-react-compiler) by using `compiler: true` in the plugin options instead of using the Babel plugin.
+1. Install dependencies:
 
-## Expanding the ESLint configuration
+   ```sh
+   npm install
+   ```
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+2. Optionally create `.env.local` in `ordemy-client` and set the API base URL:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+   ```env
+   VITE_API_URL=http://localhost:8081
+   ```
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+   Vite uses the local API URL by default. In development, API requests go through the Vite proxy. For a deployed frontend, set `VITE_API_URL` to the API's HTTPS base URL (for example, `https://your-api.onrender.com`) and redeploy. Do not add AI, database, JWT, or Cloudinary secrets to frontend environment variables.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+3. Start the development server:
 
+   ```sh
+   npm run dev
+   ```
+
+Other useful commands:
+
+```sh
+npm run lint
+npm run build
+npm run preview
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+## Account setup and profile
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Students and lecturers select their school, faculty, and department during onboarding.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Students also select their admission session. Oredemy uses it and the school's academic calendar to calculate their current level.
+- Lecturers select the cohort session they advise. Their account requires administrator verification before adviser tools become available.
+- The student **Settings** page lets students edit their name, profile photo, school, faculty, department, and admission session. Email is read-only.
+- Adviser **Settings** lets lecturers edit their name and photo. Once verified, department and cohort assignments are admin-managed.
+- Profile photo uploads require the API's server-side Cloudinary configuration; see [API environment setup](../ordemy-api/README.md#adviser-ai-and-chat).
 
-```
+## Courses and class representatives
+
+Verified lecturers can use **Courses** to add and delete courses with:
+
+- Course name
+- Course code
+- Units (1–30)
+- Level (100, 200, 300, 400, 500, or 600)
+
+Courses are saved for the lecturer's department and the school's current academic session. Students see courses matching their own department, computed level, and current session in **Curriculum**. Apply the course migration before using this feature on an existing database; instructions are in the [API README](../ordemy-api/README.md#database-setup).
+
+On the **Class reps** page, lecturers review pending applications and see approved representatives for their assigned cohort. A lecturer can revoke an approved representative's authority. Students see the revoked status and may apply again.
+
+## Adviser AI
+
+The **AI review** page lists generated question groups and drafts. Lecturers can edit and save a draft, then explicitly send it; the AI does not send responses automatically.
+
+The scheduler runs hourly between 12:00 and 17:00 Africa/Lagos when `GROQ_API_KEY` is configured on the API. **Run AI now** starts an immediate run for the adviser's linked questions from the previous 24 hours. An adviser needs to be verified, assigned to a department and cohort, and have recent questions linked to their lecturer chat.
+
+To try this flow, use the test-only SQL seed and sample accounts documented in the [API README](../ordemy-api/README.md#testing-courses-class-rep-revocation-and-ai-grouping). Never run test seed data against production.
+
+## Deployment notes
+
+- Build command: `npm run build`
+- Publish directory: `dist`
+- Set `VITE_API_URL` to the deployed API base URL in the frontend hosting provider.
+- Set the frontend's exact HTTPS origin in the API's `CLIENT_ORIGIN` environment variable to allow browser requests.
+- Deploy the API and apply its required migrations before deploying the frontend features that depend on them.
+
+Keep all service secrets on the API server. See the [API README](../ordemy-api/README.md) for CORS, environment variables, migrations, and the endpoint reference.

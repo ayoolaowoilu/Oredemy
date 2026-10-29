@@ -5,6 +5,7 @@ import {
     listAiRuns,
     listSchedulerLogs,
     reviewAiGroup,
+    runAiNow,
     sendAiGroup,
 } from "./adviser.controller.js";
 
@@ -14,6 +15,7 @@ router.use(authenticate, requireVerifiedLecturer);
 router.get("/dashboard", getDashboard);
 router.get("/ai-runs", listAiRuns);
 router.get("/scheduler-logs", listSchedulerLogs);
+router.post("/ai-runs/trigger", runAiNow);
 router.patch("/ai-runs/:runId/groups/:groupId", reviewAiGroup);
 router.post("/ai-runs/:runId/groups/:groupId/send", sendAiGroup);
 

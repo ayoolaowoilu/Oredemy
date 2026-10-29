@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { CheckCircle2, Clock3, RefreshCw, UsersRound } from "lucide-react";
+import { CheckCircle2, Clock3, RefreshCw, UsersRound, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { ApiError } from "../../lib/api";
@@ -9,7 +9,7 @@ import { Card, Notice, PageIntro, PrimaryButton } from "./shared";
 
 function requestStatusStyle(status: ClassRepRequest["status"]) {
   if (status === "approved") return "bg-emerald-50 text-emerald-700";
-  if (status === "rejected") return "bg-rose-50 text-rose-700";
+  if (status === "rejected" || status === "revoked") return "bg-rose-50 text-rose-700";
   return "bg-amber-50 text-amber-700";
 }
 
@@ -162,7 +162,11 @@ export default function StudentClassRep() {
               <p className="mt-3 text-xs leading-5 text-slate-500">
                 {newestRequest.status === "approved"
                   ? "You’re approved to represent your class for this session."
-                  : "Your department has your request. You can check back later for updates."}
+                  : newestRequest.status === "revoked"
+                    ? "Your class-representative authority was revoked. You can submit a new request if needed."
+                    : newestRequest.status === "rejected"
+                      ? "Your request was not approved. You can submit another request."
+                      : "Your department has your request. You can check back later for updates."}
               </p>
             </div>
           ) : (
@@ -232,6 +236,8 @@ export default function StudentClassRep() {
                       <span className="mt-0.5 text-slate-400">
                         {request.status === "approved" ? (
                           <CheckCircle2 size={17} />
+                        ) : request.status === "revoked" || request.status === "rejected" ? (
+                          <XCircle size={17} />
                         ) : (
                           <Clock3 size={17} />
                         )}

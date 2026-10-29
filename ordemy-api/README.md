@@ -1,6 +1,8 @@
 # Ordemy API
 
-Express and MySQL API for authentication, complaints, lecturer dashboards, class-representative requests, and administration.
+Express and MySQL API for authentication, complaints, lecturer dashboards, courses, class-representative requests, and administration.
+
+For frontend setup, role-specific screens, and deployment settings, see the [frontend README](../ordemy-client/README.md).
 
 ## Run locally
 
@@ -196,7 +198,13 @@ The memory cache resets on restart and is not shared between API instances. Redi
 | `POST` | `/api/class-rep/requests` | Signed-in student | Request class-rep status |
 | `GET` | `/api/class-rep/requests/mine` | Signed-in user | Check own class-rep request history |
 | `GET` | `/api/class-rep/requests` | Verified lecturer | List pending requests in own department |
+| `GET` | `/api/class-rep/representatives` | Verified lecturer | List approved class representatives in own department and cohort |
 | `PATCH` | `/api/class-rep/requests/:id` | Verified lecturer | Approve or reject a request |
+| `PATCH` | `/api/class-rep/requests/:id/revoke` | Verified lecturer | Revoke an approved class representative |
+| `GET` | `/api/courses/current` | Signed-in student | List courses for the student's department, level, and current academic session |
+| `GET` | `/api/courses/mine` | Verified lecturer | List courses for the lecturer's department and current academic session |
+| `POST` | `/api/courses` | Verified lecturer | Add a course for a level in the current academic session |
+| `DELETE` | `/api/courses/:id` | Verified lecturer | Delete a course owned by the lecturer |
 | `GET` | `/api/admin/lecturers/pending` | Admin | List lecturers awaiting verification |
 | `PATCH` | `/api/admin/lecturers/:id/verification` | Admin | Verify or unverify a lecturer |
 | `GET` | `/api/admin/schools` | Admin | List schools |
@@ -816,7 +824,7 @@ CREATE TABLE class_rep_requests (
     department_id INT NOT NULL,
     session VARCHAR(50) NOT NULL,
     message VARCHAR(1000) NULL,
-    status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+    status ENUM('pending', 'approved', 'rejected', 'revoked') NOT NULL DEFAULT 'pending',
     reviewed_by VARCHAR(36) NULL,
     decision_note VARCHAR(1000) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -879,6 +887,50 @@ This class-chat upgrade uses department plus academic session as the class ident
 
 Existing lecturer accounts remain unverified until an admin explicitly approves them. Keep database credentials and JWT secrets out of frontend code and source control.
 
+For an existing database, also apply [`migrations/20261029_add_courses_and_classrep_revocation.sql`](./migrations/20261029_add_courses_and_classrep_revocation.sql) once. It creates the course catalog and adds the `revoked` class-representative status.
+
+## Testing courses, class-rep revocation, and AI grouping
+
+After applying the schema and course migration, run [`testing/ai-test-seed.sql`](./testing/ai-test-seed.sql) against a test database. It creates one verified lecturer, four students, a school/faculty/department, sample current-session courses, an approved class representative, and recent linked questions. The sample accounts all use `test123`:
+
+| Role | Email |
+| --- | --- |
+| Lecturer | `ai-lecturer@example.test` |
+| Student | `ai-student1@example.test` |
+
+The seed also creates `ai-student2@example.test`, `ai-student3@example.test`, and `ai-student4@example.test`. Do not use these credentials or run the seed against production.
+
+Sign in as the sample adviser, open **AI review**, and select **Run AI now**. The protected `POST /api/adviser/ai-runs/trigger` route processes lecturer questions from the previous 24 hours immediately, rather than waiting for the scheduled 12:00–17:00 Africa/Lagos window. Configure `GROQ_API_KEY` in the API environment first. Questions must be linked to the lecturer chat and have the lecturer's cohort session. If the run fails, check **AI review** and the API logs.
+
+Sign in as the sample student to see the current-level course list under **Curriculum**. The adviser can add courses from **Courses** and revoke the seeded representative from **Class reps**.
+
+### Course API behavior
+
+The course endpoints use the school's current session, based on `schools.calendar_offset`. Lecturer course lists are scoped to the lecturer's department and current session. A student course list is scoped to the student's department, current session, and level calculated from their admission session.
+
+Create a course with an authenticated, verified lecturer:
+
+```http
+POST /api/courses
+Content-Type: application/json
+x-token: <LECTURER_JWT>
+```
+
+```json
+{
+  "course_name": "Introduction to Computing",
+  "course_code": "CSC 101",
+  "level": 100,
+  "units": 3
+}
+```
+
+Course codes are normalized to uppercase and must be unique within a department, session, and level. The database course schema is in [`data.sql`](./data.sql); existing databases should apply [`migrations/20261029_add_courses_and_classrep_revocation.sql`](./migrations/20261029_add_courses_and_classrep_revocation.sql).
+
+### Class-representative revocation
+
+`GET /api/class-rep/representatives` lists approved representatives for the verified lecturer's department and cohort. `PATCH /api/class-rep/requests/:id/revoke` changes an approved request to `revoked` and records the lecturer and time. The existing request history preserves the status change. The student can submit a new request after revocation.
+
 Frontend request/response TypeScript definitions are in [`types.ts`](./types.ts).
 
 ## Adviser AI and chat
@@ -898,9 +950,10 @@ The adviser endpoints are mounted under `/api/adviser` and require an authentica
 | `GET` | `/api/adviser/dashboard` | Department question totals and pending class-rep requests |
 | `GET` | `/api/adviser/ai-runs` | List scheduler runs and reply drafts |
 | `GET` | `/api/adviser/scheduler-logs` | List recent scheduler startup, heartbeat and recovery logs |
+| `POST` | `/api/adviser/ai-runs/trigger` | Immediately group this adviser's linked questions from the previous 24 hours |
 | `PATCH` | `/api/adviser/ai-runs/:runId/groups/:groupId` | Save an edited draft |
 | `POST` | `/api/adviser/ai-runs/:runId/groups/:groupId/send` | Send a reviewed draft to its students |
 
-The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos` when the server-side Groq key is configured. It writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
+The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos` when the server-side Groq key is configured. The protected manual trigger can also start a run at any time. It writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
 
 Adviser chat uses the existing authenticated Socket.IO endpoint. Verified lecturers can list `/api/chat/class-sessions` for their assigned session and create or open that department group with `POST /api/chat/conversations` using `{ "type": "class", "session": "2022/2023" }`. Student-to-adviser conversations are matched by department and session. Chat messages sent through REST or Socket.IO are broadcast to authorized conversation rooms.

@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   ClassRepRequestListResponse,
   ClassRepRequestResponse,
+  DepartmentCourse,
   StudentDashboardResponse,
 } from "../../utils/types";
 
@@ -27,6 +28,16 @@ export interface StudentQuestion {
 
 export const fetchStudentDashboard = () =>
   apiRequest<StudentDashboardResponse>("/api/query/dashboard", {
+    token: getToken(),
+    cache: "no-store",
+  });
+
+export const fetchCurrentStudentCourses = () =>
+  apiRequest<{
+    data: DepartmentCourse[];
+    academic_session: string;
+    level: number | null;
+  }>("/api/courses/current", {
     token: getToken(),
     cache: "no-store",
   });

@@ -3,13 +3,16 @@ import { Check, RefreshCw, UsersRound, X } from "lucide-react";
 import { ApiError } from "../../lib/api";
 import type { ClassRepRequest } from "../../utils/types";
 import {
+  fetchApprovedClassRepresentatives,
   fetchPendingClassRepRequests,
+  revokeClassRepAuthority,
   reviewClassRepRequest,
 } from "./api";
 import { AdviserCard, AdviserNotice, AdviserPageIntro } from "./shared";
 
 export default function AdviserClassReps() {
   const [requests, setRequests] = useState<ClassRepRequest[]>([]);
+  const [representatives, setRepresentatives] = useState<ClassRepRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -18,8 +21,12 @@ export default function AdviserClassReps() {
   const loadRequests = useCallback(async () => {
     setError("");
     try {
-      const result = await fetchPendingClassRepRequests();
+      const [result, approved] = await Promise.all([
+        fetchPendingClassRepRequests(),
+        fetchApprovedClassRepresentatives(),
+      ]);
       setRequests(result.data);
+      setRepresentatives(approved.data);
     } catch (loadError: unknown) {
       setError(
         loadError instanceof ApiError || loadError instanceof Error
@@ -52,11 +59,34 @@ export default function AdviserClassReps() {
       await reviewClassRepRequest(id, status, note);
       setRequests((current) => current.filter((request) => request.id !== id));
       setNotice(`Request ${status}.`);
+      if (status === "approved") await loadRequests();
     } catch (reviewError: unknown) {
       setError(
         reviewError instanceof ApiError || reviewError instanceof Error
           ? reviewError.message
           : "Could not review this request.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function revoke(request: ClassRepRequest) {
+    if (!window.confirm(`Revoke class-representative authority from ${request.student_name ?? "this student"}?`)) {
+      return;
+    }
+    setBusy(request.id);
+    setError("");
+    setNotice("");
+    try {
+      await revokeClassRepAuthority(request.id);
+      setRepresentatives((current) => current.filter((item) => item.id !== request.id));
+      setNotice(`Authority revoked for ${request.student_name ?? "the student"}.`);
+    } catch (revokeError: unknown) {
+      setError(
+        revokeError instanceof ApiError || revokeError instanceof Error
+          ? revokeError.message
+          : "Could not revoke class-representative authority.",
       );
     } finally {
       setBusy(null);
@@ -135,6 +165,37 @@ export default function AdviserClassReps() {
           ))}
         </div>
       )}
+      <section className="mt-8">
+        <h2 className="mb-3 text-lg font-bold text-slate-950">Current class representatives</h2>
+        {loading && !representatives.length ? (
+          <div className="h-24 animate-pulse rounded-2xl bg-white shadow-sm" />
+        ) : representatives.length === 0 ? (
+          <AdviserCard className="py-8 text-center">
+            <p className="text-sm text-slate-500">There are no approved class representatives for your cohort.</p>
+          </AdviserCard>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {representatives.map((request) => (
+              <AdviserCard key={request.id} className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-slate-950">{request.student_name ?? "Student"}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {request.department ?? "Your department"} · {request.session}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void revoke(request)}
+                  className="shrink-0 rounded-full border border-rose-200 px-4 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                >
+                  {busy === request.id ? "Revoking…" : "Revoke"}
+                </button>
+              </AdviserCard>
+            ))}
+          </div>
+        )}
+      </section>
     </>
   );
 }

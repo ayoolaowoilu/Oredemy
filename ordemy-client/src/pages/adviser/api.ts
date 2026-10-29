@@ -4,6 +4,7 @@ import type {
   ChatConversation,
   ChatMessage,
   ClassRepRequest,
+  DepartmentCourse,
 } from "../../utils/types";
 
 function getToken() {
@@ -92,6 +93,12 @@ export const fetchPendingClassRepRequests = () =>
     cache: "no-store",
   });
 
+export const fetchApprovedClassRepresentatives = () =>
+  apiRequest<{ data: ClassRepRequest[] }>("/api/class-rep/representatives", {
+    token: getToken(),
+    cache: "no-store",
+  });
+
 export const reviewClassRepRequest = (
   id: number,
   status: "approved" | "rejected",
@@ -101,6 +108,51 @@ export const reviewClassRepRequest = (
     method: "PATCH",
     token: getToken(),
     body: { status, note },
+  });
+
+export const revokeClassRepAuthority = (id: number) =>
+  apiRequest(`/api/class-rep/requests/${id}/revoke`, {
+    method: "PATCH",
+    token: getToken(),
+    body: {},
+  });
+
+export const fetchLecturerCourses = () =>
+  apiRequest<{ data: DepartmentCourse[]; academic_session: string }>(
+    "/api/courses/mine",
+    { token: getToken(), cache: "no-store" },
+  );
+
+export const createLecturerCourse = (course: {
+  course_name: string;
+  course_code: string;
+  units: number;
+  level: number;
+}) =>
+  apiRequest<{ data: DepartmentCourse; message: string }>("/api/courses", {
+    method: "POST",
+    token: getToken(),
+    body: course,
+  });
+
+export const deleteLecturerCourse = (id: number) =>
+  apiRequest<{ message: string }>(`/api/courses/${id}`, {
+    method: "DELETE",
+    token: getToken(),
+  });
+
+export const triggerAiRun = () =>
+  apiRequest<{
+    data: {
+      id: number;
+      status: "running" | "completed";
+      question_count: number;
+      error_message: string | null;
+    };
+  }>("/api/adviser/ai-runs/trigger", {
+    method: "POST",
+    token: getToken(),
+    body: {},
   });
 
 export const fetchAdviserConversations = () =>

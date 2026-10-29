@@ -8,6 +8,7 @@ import fetchRoutes from "./src/modules/fetch/fetch.routes.js";
 import classRepRoutes from "./src/modules/class-rep/class-rep.routes.js";
 import chatRoutes from "./src/modules/chat/chat.routes.js";
 import adviserRoutes from "./src/modules/adviser/adviser.routes.js";
+import courseRoutes from "./src/modules/courses/course.routes.js";
 import { invalidateCacheOnMutation } from "./src/middleware/response-cache.js";
 const app = express();
 
@@ -49,6 +50,7 @@ app.use("/api/fetch", fetchRoutes);
 app.use("/api/class-rep", classRepRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/adviser", adviserRoutes);
+app.use("/api/courses", courseRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Server is running" });
