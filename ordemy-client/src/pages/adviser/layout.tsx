@@ -163,14 +163,6 @@ export default function AdviserLayout() {
           <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3 sm:px-7 lg:px-10">
             <div className="mx-auto flex max-w-[1260px] items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setMenuOpen(true)}
-                  aria-label="Open menu"
-                  className="grid size-10 place-items-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 lg:hidden"
-                >
-                  <Menu size={19} />
-                </button>
                 <img
                   src="/ordemylogo.svg"
                   alt="Oredemy"
@@ -191,6 +183,14 @@ export default function AdviserLayout() {
                   </p>
                 </div>
                 <UserAvatar image={user?.image} name={user?.name} className="size-9 text-sm" />
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen(true)}
+                  aria-label="Open menu"
+                  className="grid size-10 place-items-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 lg:hidden"
+                >
+                  <Menu size={19} />
+                </button>
               </div>
             </div>
           </header>
