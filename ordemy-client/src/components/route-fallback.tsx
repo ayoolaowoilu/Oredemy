@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
+import { LoadingScreen } from "./loading-states";
 
 /**
  * Catch-all route: nothing renders unprotected. Signed-out visitors go to
@@ -8,7 +9,7 @@ import { useAuth } from "../context/useAuth";
 export function RouteFallback() {
   const { user, loading } = useAuth();
 
-  if (loading) return <p>Loading…</p>;
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   return <Navigate to="/" replace />;
 }

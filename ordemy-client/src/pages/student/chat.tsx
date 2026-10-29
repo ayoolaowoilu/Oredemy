@@ -7,6 +7,7 @@ import { ApiError } from "../../lib/api";
 import { connectChatSocket } from "../../utils/chat-socket";
 import type { ChatConversation, ChatMessage } from "../../utils/types";
 import { UserAvatar } from "../../components/user-avatar";
+import { SkeletonList } from "../../components/loading-states";
 import {
   createAdviserConversation,
   createStudentClassConversation,
@@ -310,7 +311,7 @@ export default function StudentChat() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
               {loading ? (
-                <p className="p-3 text-xs text-slate-400">Loading conversations…</p>
+                <SkeletonList rows={3} />
               ) : (
                 [
                   { item: classConversation, title: "Class group", preview: classConversation?.last_message },
