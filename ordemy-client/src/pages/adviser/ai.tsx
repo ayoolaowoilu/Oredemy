@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bell, Bot, Check, Clock3, RefreshCw, Send, Sparkles } from "lucide-react";
+import { Ban, Bell, Bot, Check, Clock3, RefreshCw, Repeat2, Send, Sparkles } from "lucide-react";
 import { ApiError } from "../../lib/api";
 import {
   connectAdviserSocket,
+  cancelAiReplyRule,
   fetchAiRuns,
   fetchAiNotifications,
   fetchSchedulerLogs,
   markAiNotificationRead,
   markAllAiNotificationsRead,
+  saveAiReplyRule,
   sendAiDraft,
   updateAiDraft,
   type AiNotification,
@@ -172,6 +174,46 @@ export default function AdviserAi() {
     }
   }
 
+  async function saveFutureReply(runId: number, groupId: number) {
+    const replyText = drafts[groupId] ?? "";
+    setBusy(groupId);
+    setError("");
+    setNotice("");
+    try {
+      const response = await saveAiReplyRule(runId, groupId, replyText);
+      setDrafts((current) => ({ ...current, [groupId]: replyText }));
+      setNotice(response.message);
+      await loadRuns();
+    } catch (ruleError: unknown) {
+      setError(
+        ruleError instanceof ApiError || ruleError instanceof Error
+          ? ruleError.message
+          : "Could not save this automatic reply rule.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function cancelFutureReply(runId: number, groupId: number) {
+    setBusy(groupId);
+    setError("");
+    setNotice("");
+    try {
+      const response = await cancelAiReplyRule(runId, groupId);
+      setNotice(response.message);
+      await loadRuns();
+    } catch (ruleError: unknown) {
+      setError(
+        ruleError instanceof ApiError || ruleError instanceof Error
+          ? ruleError.message
+          : "Could not cancel this automatic reply rule.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const groups = runs.flatMap((run) =>
     run.groups.map((group) => ({ ...group, runStatus: run.status, runKey: run.slot_key })),
   );
@@ -181,7 +223,7 @@ export default function AdviserAi() {
       <AdviserPageIntro
         eyebrow="AI question assistant"
         title="Grouped questions"
-        description="Review similar student questions and manage AI-assisted replies. Automatic sending is optional and controlled in Settings."
+        description="Review grouped student questions. Choose which specific question groups should receive an approved automatic reply in future."
         action={
           <div>
             <button
@@ -202,7 +244,7 @@ export default function AdviserAi() {
       <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#2501FF]/15 bg-[#2501FF]/[0.04] p-4">
         <Sparkles size={18} className="mt-0.5 shrink-0 text-[#2501FF]" />
         <p className="text-sm leading-6 text-slate-700">
-          Groups run hourly from 12pm–5pm Africa/Lagos. AI sees the question subject and text. By default, replies wait for your review. If you enable automatic replies in Settings, scheduled runs can send AI-labeled answers directly; students are notified in chat.
+          Groups run hourly from 12pm–5pm Africa/Lagos. AI sees question subjects and text to group similar issues. Nothing is sent automatically unless you enable it for a specific group below. Future questions must match that group’s examples; the saved reply is sent as written, and you can cancel the rule at any time.
         </p>
       </div>
       <AdviserCard className="mb-6">
@@ -313,6 +355,37 @@ export default function AdviserAi() {
                     className="w-full resize-y rounded-xl border border-[#E9E5FF] bg-[#FCFBFF] px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[#2501FF]/50 focus:bg-white focus:ring-4 focus:ring-[#2501FF]/[0.08] disabled:opacity-70"
                   />
                 </label>
+                {group.has_active_reply_rule && (
+                  <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">
+                    Automatic reply is on for this issue. Future matching questions use the approved reply shown here.
+                  </p>
+                )}
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  {group.has_active_reply_rule && (
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => void cancelFutureReply(run.id, group.id)}
+                      className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                    >
+                      <Ban size={15} /> {busy === group.id ? "Working…" : "Cancel future replies"}
+                    </button>
+                  )}
+                  {(!group.has_active_reply_rule || drafts[group.id] !== group.active_reply_text) && (
+                    <button
+                      type="button"
+                      disabled={busy !== null || !(drafts[group.id] ?? group.draft_reply).trim()}
+                      onClick={() => void saveFutureReply(run.id, group.id)}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                    >
+                      <Repeat2 size={15} /> {busy === group.id
+                        ? "Working…"
+                        : group.has_active_reply_rule
+                          ? "Update future reply"
+                          : "Reply to questions like this in future"}
+                    </button>
+                  )}
+                </div>
                 {group.status === "pending" && (
                   <div className="mt-4 flex flex-wrap justify-end gap-2">
                     <button

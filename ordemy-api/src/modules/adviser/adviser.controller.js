@@ -1,14 +1,14 @@
 import {
     GetAdviserDashboard,
-    GetAiPreferences,
     ListAiNotifications,
     ListAiRuns,
     ListSchedulerLogs,
     MarkAiNotificationRead,
     MarkAllAiNotificationsRead,
     ReviewAiGroup,
+    SaveAiReplyRule,
+    CancelAiReplyRule,
     SendAiGroup,
-    UpdateAiPreferences,
 } from "./adviser.services.js";
 import { RunAdviserAiNow } from "./adviser-batch.scheduler.js";
 
@@ -22,16 +22,6 @@ export async function listAiRuns(req, res) {
 
 export async function listSchedulerLogs(req, res) {
     return res.status(200).json(await ListSchedulerLogs(req.authUser.id));
-}
-
-export async function getAiPreferences(req, res) {
-    return res.status(200).json(await GetAiPreferences(req.authUser.id));
-}
-
-export async function updateAiPreferences(req, res) {
-    return res.status(200).json(
-        await UpdateAiPreferences(req.authUser.id, req.body)
-    );
 }
 
 export async function listAiNotifications(req, res) {
@@ -64,5 +54,26 @@ export async function reviewAiGroup(req, res) {
 export async function sendAiGroup(req, res) {
     return res.status(200).json(
         await SendAiGroup(req.authUser.id, req.params.runId, req.params.groupId)
+    );
+}
+
+export async function saveAiReplyRule(req, res) {
+    return res.status(200).json(
+        await SaveAiReplyRule(
+            req.authUser.id,
+            req.params.runId,
+            req.params.groupId,
+            req.body
+        )
+    );
+}
+
+export async function cancelAiReplyRule(req, res) {
+    return res.status(200).json(
+        await CancelAiReplyRule(
+            req.authUser.id,
+            req.params.runId,
+            req.params.groupId
+        )
     );
 }
