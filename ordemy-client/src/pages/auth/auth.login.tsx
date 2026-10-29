@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from "react";
+﻿import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { AlertCircle, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Check, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { ApiError } from "../../lib/api";
 import { isValidEmail, isValidPassword } from "./auth.helpers";
+import { needsOnboarding } from "../../utils/onboarding";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import {
@@ -20,10 +21,14 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Where to go after login (the page they tried to open before being sent here)
-  const from =
+  // Where to go after login (the page they tried to open before being sent here).
+  // Onboarding is never a valid return target: a completed account should land
+  // on its workspace, and an incomplete one goes there through the check below.
+  const rawFrom =
     (location.state as { from?: { pathname: string } } | null)?.from
       ?.pathname ?? "/";
+  const from =
+    rawFrom === "/login" || rawFrom === "/onboarding" ? "/" : rawFrom;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,6 +36,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [role, setRole] = useState<"student" | "adviser" | "admin">("student");
+  const [remember, setRemember] = useState(true);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault(); // stop the browser from reloading the page
@@ -44,7 +50,7 @@ export default function Login() {
 
     setSubmitting(true);
     try {
-      const user = await login({ email, password });
+      const user = await login({ email, password }, remember);
       const expectedRole = role === "adviser" ? "lecturer" : role;
       if (user.role !== expectedRole) {
         logout();
@@ -52,26 +58,20 @@ export default function Login() {
         return;
       }
 
-      const needsOnboarding =
-        user.role === "student" &&
-        (!user.faculty_id ||
-          !user.department_id ||
-          !user.session ||
-          !user.admission_session);
-      const adviserNeedsOnboarding =
-        user.role === "lecturer" &&
-        !user.is_verified &&
-        (!user.faculty_id || !user.department_id || !user.session);
-      const destination = needsOnboarding
-        ? "/onboarding"
-        : adviserNeedsOnboarding
-          ? "/onboarding"
-        : user.role === "student" && from === "/"
+      if (needsOnboarding(user)) {
+        navigate("/onboarding", { replace: true });
+        return;
+      }
+
+      const homeByRole =
+        user.role === "student"
           ? "/dashboard/student"
-          : user.role === "lecturer" && from === "/"
-            ? "/dashboard/adviser"
-          : from;
-      navigate(destination, { replace: true });
+          : user.role === "admin"
+            ? "/dashboard/admin"
+            : user.is_verified
+              ? "/dashboard/adviser"
+              : "/";
+      navigate(from === "/" ? homeByRole : from, { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
@@ -96,7 +96,7 @@ export default function Login() {
       </aside>
 
       {/* Form panel on the right */}
-      <div className="flex flex-1 items-center justify-center ml-20 px-4 py-10 lg:justify-between lg:pr-4">
+      <div className="flex flex-1 items-center justify-center px-4 py-10 lg:ml-20 lg:justify-between lg:pr-4">
         <div className="w-full max-w-lg">
           {/* Small logo shown only when the brand panel is hidden */}
           <Link
@@ -113,7 +113,7 @@ export default function Login() {
           <Card className="w-full border-0 shadow-none rounded-none bg-card-none">
             <CardHeader className="space-y-1">
               <CardTitle className="font-bold">Sign In</CardTitle>
-              <div className="flex flex-rol gap-3 mt-2">
+              <div className="flex flex-wrap gap-2 mt-2 sm:gap-3">
                 {(
                   [
                     ["student", "Student"],
@@ -139,12 +139,12 @@ export default function Login() {
             </CardHeader>
 
             <CardContent>
-              <form onSubmit={handleSubmit} autoComplete="off" className="space-y-5">
+              <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
                   <Input
                     id="email"
                     type="email"
-                    autoComplete="off"
+                    autoComplete="email"
                     placeholder="Email"
                     className="h-auto p-4 rounded-2xl hover:border-[#2501FF] focus-visible:border-[#2501FF] focus-visible:ring-[#2501FF]/25"
                     value={email}
@@ -158,7 +158,7 @@ export default function Login() {
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
-                      autoComplete="new-password"
+                      autoComplete="current-password"
                       placeholder="Password"
                       className="h-auto p-4 pr-10 rounded-2xl hover:border-[#2501FF] focus-visible:border-[#2501FF] focus-visible:ring-[#2501FF]/25"
                       value={password}
@@ -184,6 +184,23 @@ export default function Login() {
                   </div>
                 </div>
 
+                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                  <span className="relative flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(event) => setRemember(event.target.checked)}
+                      className="appearance-none size-4 rounded-sm border-2 border-[#2501FF] bg-white checked:bg-[#2501FF] cursor-pointer"
+                    />
+                    <Check
+                      className={`absolute size-3 text-white pointer-events-none transition-opacity ${
+                        remember ? "opacity-100" : "opacity-0"
+                      }`}
+                    />
+                  </span>
+                  Remember me
+                </label>
+
                 {error && (
                   <Alert variant="destructive">
                     <AlertCircle className="size-4" />
@@ -192,7 +209,7 @@ export default function Login() {
                 )}
 
                 <Button type="submit" className="w-full h-12 rounded-2xl bg-[#2501FF] text-white hover:bg-[#2501FF] hover:text-white" disabled={submitting} >
-                  {submitting ? "Signing in…" : "Sign in"}
+                  {submitting ? "Signing in..." : "Sign in"}
                 </Button>
               </form>
             </CardContent>
