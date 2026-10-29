@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { ApiError } from "../../lib/api";
-import type { AcademicSchool } from "../../utils/types";
+import type { AcademicSchool, DepartmentCourse } from "../../utils/types";
 import {
   calculateLevel,
   getCurrentAcademicSession,
@@ -24,6 +24,7 @@ import {
   PageIntro,
   StatCard,
 } from "./shared";
+import { fetchCurrentStudentCourses } from "./api";
 
 const levelPlan = [
   { level: 100, label: "Foundation", note: "Settle into department rules and core introductory courses." },
@@ -46,6 +47,11 @@ export default function StudentCurriculum() {
   const [schools, setSchools] = useState<AcademicSchool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [courses, setCourses] = useState<DepartmentCourse[]>([]);
+  const [coursesSession, setCoursesSession] = useState("");
+  const [coursesLevel, setCoursesLevel] = useState<number | null>(null);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [coursesError, setCoursesError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -64,6 +70,32 @@ export default function StudentCurriculum() {
       })
       .finally(() => {
         if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchCurrentStudentCourses()
+      .then((response) => {
+        if (!active) return;
+        setCourses(response.data);
+        setCoursesSession(response.academic_session);
+        setCoursesLevel(response.level);
+      })
+      .catch((loadError: unknown) => {
+        if (active) {
+          setCoursesError(
+            loadError instanceof ApiError || loadError instanceof Error
+              ? loadError.message
+              : "Could not load your current-session courses.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setCoursesLoading(false);
       });
     return () => {
       active = false;
@@ -185,6 +217,62 @@ export default function StudentCurriculum() {
           color="bg-amber-50 text-amber-700"
         />
       </div>
+
+      <section className="mt-7">
+        <Card>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                Current session courses
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-[#0B1030]">
+                {coursesLevel ? `${coursesLevel} level · ${coursesSession}` : coursesSession || currentSession.label}
+              </h2>
+            </div>
+            {!coursesLoading && courses.length > 0 && (
+              <span className="rounded-full bg-[#2501FF]/[0.08] px-3 py-1 text-xs font-bold text-[#2501FF]">
+                {courses.reduce((sum, course) => sum + course.units, 0)} total units
+              </span>
+            )}
+          </div>
+          {coursesError ? (
+            <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">
+              {coursesError}
+            </p>
+          ) : coursesLoading ? (
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="h-20 animate-pulse rounded-xl bg-slate-100" />
+              ))}
+            </div>
+          ) : courses.length === 0 ? (
+            <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-500">
+              {coursesLevel
+                ? `No courses have been added for your department and ${coursesLevel} level in ${coursesSession}. Check back after your lecturer publishes them.`
+                : "Complete your academic profile with a department and admission session to see your courses."}
+            </p>
+          ) : (
+            <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {courses.map((course) => (
+                <li key={course.id} className="rounded-xl border border-[#F0ECFF] bg-[#FCFBFF] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="rounded-lg bg-[#2501FF]/[0.08] px-2.5 py-1 text-xs font-bold text-[#2501FF]">
+                      {course.course_code}
+                    </span>
+                    <span className="shrink-0 text-xs font-semibold text-slate-500">
+                      {course.units} unit{course.units === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-sm font-bold text-[#0B1030]">{course.course_name}</h3>
+                  {course.lecturer_name && (
+                    <p className="mt-1 text-xs text-slate-500">Added by {course.lecturer_name}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </section>
 
       <div className="mt-7 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
         <Card>

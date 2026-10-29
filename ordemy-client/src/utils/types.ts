@@ -133,6 +133,17 @@ export interface StudentDashboardResponse {
     }>;
 }
 
+export interface DepartmentCourse {
+    id: number;
+    course_name: string;
+    course_code: string;
+    units: number;
+    level: number;
+    academic_session: string;
+    lecturer_name?: string;
+    created_at?: string;
+}
+
 export type ChatConversationType = "support" | "lecturer" | "class";
 
 export interface ChatConversation {
@@ -238,7 +249,7 @@ export interface FetchQuestionsResponse {
     };
 }
 
-export type ClassRepRequestStatus = "pending" | "approved" | "rejected";
+export type ClassRepRequestStatus = "pending" | "approved" | "rejected" | "revoked";
 
 export interface SubmitClassRepRequest {
     message?: string;

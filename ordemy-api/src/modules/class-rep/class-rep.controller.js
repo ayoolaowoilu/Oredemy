@@ -1,6 +1,8 @@
 import {
     ListClassRepRequests,
+    ListClassRepresentatives,
     ListMyClassRepRequests,
+    RevokeClassRepAuthority,
     ReviewClassRepRequest,
     SubmitClassRepRequest,
 } from "./class-rep.services.js";
@@ -15,8 +17,18 @@ export async function listRequests(req, res) {
     return res.status(200).json(data);
 }
 
+export async function listRepresentatives(req, res) {
+    const data = await ListClassRepresentatives(req.authUser.id);
+    return res.status(200).json(data);
+}
+
 export async function listMyRequests(req, res) {
     const data = await ListMyClassRepRequests(req.authUser.id);
+    return res.status(200).json(data);
+}
+
+export async function revokeRepresentative(req, res) {
+    const data = await RevokeClassRepAuthority(req.authUser.id, req.params.id);
     return res.status(200).json(data);
 }
 

@@ -96,6 +96,24 @@ export async function ListClassRepRequests(lecturerId) {
     return { data: rows };
 }
 
+export async function ListClassRepresentatives(lecturerId) {
+    const { departmentId, session } = await getVerifiedLecturerDepartment(lecturerId);
+    const [rows] = await pool.query(
+        `SELECT requests.id, requests.student_id, students.name AS student_name,
+                requests.department_id, departments.name AS department,
+                requests.session, requests.message, requests.status,
+                requests.reviewed_at
+         FROM class_rep_requests AS requests
+         INNER JOIN users AS students ON students.id = requests.student_id
+         INNER JOIN departments ON departments.id = requests.department_id
+         WHERE requests.department_id = ? AND requests.session = ?
+           AND requests.status = 'approved'
+         ORDER BY students.name, requests.id`,
+        [departmentId, session]
+    );
+    return { data: rows };
+}
+
 export async function ListMyClassRepRequests(studentId) {
     const [rows] = await pool.query(
         `SELECT requests.id, requests.department_id, departments.name AS department,
@@ -108,6 +126,44 @@ export async function ListMyClassRepRequests(studentId) {
         [studentId]
     );
     return { data: rows };
+}
+
+export async function RevokeClassRepAuthority(lecturerId, requestId) {
+    const { departmentId, session } = await getVerifiedLecturerDepartment(lecturerId);
+    const parsedId = Number(requestId);
+    if (!Number.isSafeInteger(parsedId) || parsedId <= 0) {
+        throw new HttpError(400, "A valid request ID is required");
+    }
+
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [requestRows] = await connection.query(
+            `SELECT id
+             FROM class_rep_requests
+             WHERE id = ? AND department_id = ? AND session = ? AND status = 'approved'
+             FOR UPDATE`,
+            [parsedId, departmentId, session]
+        );
+        if (!requestRows[0]) {
+            throw new HttpError(404, "Approved class representative not found");
+        }
+
+        await connection.query(
+            `UPDATE class_rep_requests
+             SET status = 'revoked', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP,
+                 decision_note = 'Class-representative authority revoked by adviser'
+             WHERE id = ?`,
+            [lecturerId, parsedId]
+        );
+        await connection.commit();
+        return { message: "Class-representative authority revoked" };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 }
 
 export async function ReviewClassRepRequest(lecturerId, requestId, body) {

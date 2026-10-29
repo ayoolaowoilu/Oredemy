@@ -8,6 +8,8 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  BookOpen,
+  Settings,
   X,
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
@@ -18,7 +20,9 @@ const links = [
   { label: "Home", to: "/dashboard/adviser", icon: LayoutDashboard, end: true },
   { label: "AI review", to: "/dashboard/adviser/ai", icon: Bot },
   { label: "Class reps", to: "/dashboard/adviser/class-reps", icon: CheckCheck },
+  { label: "Courses", to: "/dashboard/adviser/courses", icon: BookOpen },
   { label: "Chats", to: "/dashboard/adviser/chat", icon: MessageCircle },
+  { label: "Settings", to: "/dashboard/adviser/settings", icon: Settings },
 ];
 
 export default function AdviserLayout() {

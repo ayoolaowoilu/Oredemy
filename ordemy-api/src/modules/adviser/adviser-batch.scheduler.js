@@ -1,4 +1,5 @@
 import pool from "../../config/database.js";
+import { HttpError } from "../../utils/http-error.js";
 import { DEFAULT_MODEL, GROQ_BASE_URL, loadAiConfiguration } from "./adviser.services.js";
 
 const TIME_ZONE = "Africa/Lagos";
@@ -16,6 +17,7 @@ function getLagosParts(date) {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
+        minute: "2-digit",
         hourCycle: "h23",
     }).formatToParts(date);
     return Object.fromEntries(parts.map(({ type, value }) => [type, value]));
@@ -396,6 +398,50 @@ async function processSlot(lecturer, slot) {
         );
         console.error(`[adviser-ai] ${slot.key} failed for ${lecturer.id}:`, error);
     }
+}
+
+export async function RunAdviserAiNow(lecturerId) {
+    const [lecturers] = await pool.query(
+        `SELECT id, department_id, session, is_verified
+         FROM users
+         WHERE id = ? AND role = 'lecturer'`,
+        [lecturerId]
+    );
+    const lecturer = lecturers[0];
+    if (!lecturer || !lecturer.is_verified) {
+        throw new HttpError(403, "Verified lecturer access required");
+    }
+    if (!lecturer.department_id || !lecturer.session) {
+        throw new HttpError(400, "Assign your lecturer account to a department and class session first");
+    }
+
+    const now = new Date();
+    const parts = getLagosParts(now);
+    const slot = {
+        key: `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${String(now.getSeconds()).padStart(2, "0")}`,
+        scheduledAt: now,
+        from: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+    };
+    await processSlot(lecturer, slot);
+
+    const [runs] = await pool.query(
+        `SELECT id, status, question_count, error_message, started_at, completed_at
+         FROM adviser_ai_runs
+         WHERE lecturer_id = ? AND slot_key = ?
+         LIMIT 1`,
+        [lecturerId, slot.key]
+    );
+    const run = runs[0];
+    if (!run) throw new HttpError(500, "AI test run could not be recorded");
+    if (run.status === "failed") {
+        throw new HttpError(502, "AI grouping failed. Review the failed run and API logs for details.");
+    }
+    return {
+        data: {
+            ...run,
+            question_count: Number(run.question_count),
+        },
+    };
 }
 
 async function schedulerTick() {
