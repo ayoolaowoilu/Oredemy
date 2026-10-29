@@ -8,7 +8,7 @@ import { fetchStudentQuestions, sendStudentQuery } from "./api";
 import { Card, Notice, PageIntro, PrimaryButton } from "./shared";
 
 const inputClass =
-  "mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10";
+  "mt-2 w-full rounded-xl border border-[#E9E5FF] bg-white px-3.5 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10";
 
 export default function StudentQuestions() {
   const { user } = useAuth();
@@ -91,7 +91,7 @@ export default function StudentQuestions() {
         action={
           <Link
             to="/dashboard/student/chat"
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-[#2501FF]/30 hover:text-[#2501FF]"
+            className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF]"
           >
             Open chat <ArrowRight size={16} />
           </Link>
@@ -232,7 +232,7 @@ export default function StudentQuestions() {
               ))}
             </div>
           ) : (
-            <div className="mt-5 rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center">
+            <div className="mt-5 rounded-2xl border border-dashed border-[#E6E0FF] bg-[#FCFBFF] px-4 py-8 text-center">
               <MessageSquareText
                 size={23}
                 className="mx-auto text-slate-300"

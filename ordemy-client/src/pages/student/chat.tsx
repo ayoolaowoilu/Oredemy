@@ -241,13 +241,13 @@ export default function StudentChat() {
             type="button"
             onClick={() => void refresh()}
             disabled={!conversation || loading}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-[#2501FF]/30 hover:text-[#2501FF] disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF] disabled:opacity-50"
           >
             <RefreshCw size={15} /> Refresh
           </button>
         }
       />
-      <Card className="overflow-hidden p-0">
+      <Card className="overflow-hidden" padded={false}>
         <div className="flex gap-2 border-b border-slate-100 bg-white px-4 py-3 sm:px-6">
           {[
             { item: classConversation, label: "Class group", icon: UsersRound },
@@ -394,7 +394,7 @@ export default function StudentChat() {
                 : "Complete your academic profile to contact an adviser"
             }
             disabled={!conversation || !user?.department_id || !user?.session}
-            className="max-h-36 min-h-12 flex-1 resize-y rounded-xl border border-slate-200 px-3.5 py-3 text-sm leading-5 outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10 disabled:bg-slate-50"
+            className="max-h-36 min-h-12 flex-1 resize-y rounded-xl border border-[#E9E5FF] px-3.5 py-3 text-sm leading-5 outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10 disabled:bg-slate-50"
           />
           <PrimaryButton
             type="submit"
