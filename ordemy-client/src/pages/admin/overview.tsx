@@ -1,15 +1,66 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  Banknote,
+  GraduationCap,
+  Headphones,
+  MessageSquareWarning,
+  Star,
+  Users,
+} from "lucide-react";
 import { ApiError } from "../../lib/api";
 import type { PendingLecturer } from "../../utils/types";
 import { fetchPendingLecturers, setLecturerVerification } from "./api";
+import { Card, Notice, PageIntro, StatCard } from "./shared";
 
-const stats = [
-  { label: "Users", value: "7", tone: "text-[#2501FF]" },
-  { label: "Active students", value: "3", tone: "text-emerald-600" },
-  { label: "Revenue", value: "₦1000", tone: "text-amber-500" },
-  { label: "Complaints", value: "127", tone: "text-rose-500" },
-  { label: "Support open", value: "0", tone: "text-amber-500" },
-  { label: "App rating", value: "–", tone: "text-[#2501FF]" },
+const stats: Array<{
+  label: string;
+  value: string;
+  note: string;
+  icon: ReactNode;
+  color: string;
+}> = [
+  {
+    label: "Users",
+    value: "7",
+    note: "Registered accounts",
+    icon: <Users size={19} />,
+    color: "bg-[#2501FF]/[0.08] text-[#2501FF]",
+  },
+  {
+    label: "Active students",
+    value: "3",
+    note: "Using the platform",
+    icon: <GraduationCap size={20} />,
+    color: "bg-emerald-50 text-emerald-700",
+  },
+  {
+    label: "Revenue",
+    value: "₦1000",
+    note: "Settled this period",
+    icon: <Banknote size={19} />,
+    color: "bg-amber-50 text-amber-700",
+  },
+  {
+    label: "Complaints",
+    value: "127",
+    note: "Awaiting review",
+    icon: <MessageSquareWarning size={19} />,
+    color: "bg-rose-50 text-rose-600",
+  },
+  {
+    label: "Support open",
+    value: "0",
+    note: "No unread threads",
+    icon: <Headphones size={19} />,
+    color: "bg-amber-50 text-amber-700",
+  },
+  {
+    label: "App rating",
+    value: "–",
+    note: "Collecting feedback",
+    icon: <Star size={19} />,
+    color: "bg-violet-50 text-violet-700",
+  },
 ];
 
 // Design preview rows used only in development when no real approvals exist yet.
@@ -103,46 +154,50 @@ export default function AdminOverview() {
   const waiting = pending.length;
 
   return (
-    <div className="space-y-10">
-      <section>
-        <h1 className="text-2xl font-extrabold tracking-tight text-[#0B1030] sm:text-[32px]">
-          {waiting > 0
+    <>
+      <PageIntro
+        eyebrow="Admin overview"
+        title={
+          waiting > 0
             ? `${waiting} approval${waiting === 1 ? "" : "s"} waiting`
-            : "No approvals waiting"}
-        </h1>
+            : "No approvals waiting"
+        }
+        description="Review new adviser accounts and keep an eye on platform activity."
+      />
 
-        <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {stats.map(({ label, value, tone }) => (
-            <div
-              key={label}
-              className="rounded-3xl border border-[#F0ECFF] bg-white p-6"
-            >
-              <p className="text-xs font-medium text-slate-400">{label}</p>
-              <p className={`mt-2 text-[28px] font-extrabold leading-none ${tone}`}>
-                {value}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {stats.map(({ label, value, note, icon, color }) => (
+          <StatCard
+            key={label}
+            icon={icon}
+            label={label}
+            value={value}
+            note={note}
+            color={color}
+          />
+        ))}
+      </div>
 
-      <section>
+      <section className="mt-10">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-bold text-[#0B1030]">Pending approvals</h2>
-          <span className="text-xs font-semibold text-slate-400">
+          <span className="rounded-full bg-[#2501FF]/[0.08] px-3 py-1 text-xs font-bold text-[#2501FF]">
             {waiting} waiting
           </span>
         </div>
 
         {error && (
-          <p className="mt-4 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-xs text-rose-600">
-            {error}
-          </p>
+          <div className="mt-4">
+            <Notice onDismiss={() => setError("")}>{error}</Notice>
+          </div>
         )}
 
-        <div className="mt-4 rounded-3xl border border-[#F0ECFF] bg-white px-3 py-1 sm:px-5">
+        <Card className="mt-4 px-3 py-1 sm:px-5" padded={false}>
           {loading ? (
-            <p className="px-2 py-6 text-sm text-slate-400">Loading approvals…</p>
+            <div className="space-y-2 py-4">
+              <div className="h-14 animate-pulse rounded-2xl bg-slate-100" />
+              <div className="h-14 animate-pulse rounded-2xl bg-slate-100" />
+            </div>
           ) : pending.length === 0 ? (
             <p className="px-2 py-6 text-sm text-slate-400">
               New adviser accounts will appear here for approval.
@@ -192,8 +247,8 @@ export default function AdminOverview() {
               ))}
             </ul>
           )}
-        </div>
+        </Card>
       </section>
-    </div>
+    </>
   );
 }

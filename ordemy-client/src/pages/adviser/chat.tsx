@@ -337,7 +337,7 @@ export default function AdviserChat() {
       />
       {error && <AdviserNotice dismiss={() => setError("")}>{error}</AdviserNotice>}
       {notice && <AdviserNotice tone="success" dismiss={() => setNotice("")}>{notice}</AdviserNotice>}
-      <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-[#F0ECFF] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-bold text-slate-900">Department group chat</p>
           <p className="mt-1 text-xs text-slate-500">Choose a student session to create or open its group.</p>
@@ -347,7 +347,7 @@ export default function AdviserChat() {
             value={session}
             onChange={(event) => setSession(event.target.value)}
             disabled={!sessions.length}
-            className="min-w-36 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#2501FF]/50"
+            className="min-w-36 rounded-xl border border-[#E9E5FF] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#2501FF]/50"
           >
             {sessions.length ? sessions.map((item) => (
               <option key={item} value={item}>{item}</option>
@@ -503,7 +503,7 @@ export default function AdviserChat() {
                     maxLength={5000}
                     placeholder={connected ? "Write a message…" : "Write a message (realtime unavailable)…"}
                     disabled={sending}
-                    className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#2501FF]/50 focus:ring-4 focus:ring-[#2501FF]/[0.08] disabled:bg-slate-50"
+                    className="min-w-0 flex-1 rounded-xl border border-[#E9E5FF] px-4 py-3 text-sm outline-none transition focus:border-[#2501FF]/50 focus:ring-4 focus:ring-[#2501FF]/[0.08] disabled:bg-slate-50"
                   />
                   <button
                     type="submit"

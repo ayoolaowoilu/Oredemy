@@ -102,7 +102,7 @@ export default function StudentClassRep() {
                 )
                 .finally(() => setLoading(false));
             }}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-[#2501FF]/30 hover:text-[#2501FF]"
+            className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF]"
           >
             <RefreshCw size={15} /> Refresh
           </button>
@@ -142,7 +142,7 @@ export default function StudentClassRep() {
           </div>
 
           {activeRequest ? (
-            <div className="mt-5 rounded-xl border border-slate-200 p-4">
+            <div className="mt-5 rounded-2xl border border-[#F0ECFF] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-bold capitalize text-slate-900">
@@ -181,7 +181,7 @@ export default function StudentClassRep() {
                 maxLength={1000}
                 rows={4}
                 placeholder="Share why you’d like to help represent your class."
-                className="w-full resize-y rounded-xl border border-slate-200 px-3.5 py-3 text-sm leading-6 outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10"
+                className="w-full resize-y rounded-xl border border-[#E9E5FF] px-3.5 py-3 text-sm leading-6 outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10"
               />
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs text-slate-400">
@@ -269,7 +269,7 @@ export default function StudentClassRep() {
               ))}
             </div>
           ) : (
-            <div className="mt-5 rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center">
+            <div className="mt-5 rounded-2xl border border-dashed border-[#E6E0FF] bg-[#FCFBFF] px-4 py-8 text-center">
               <UsersRound size={22} className="mx-auto text-slate-300" />
               <p className="mt-2 text-sm font-semibold text-slate-700">
                 No requests yet
