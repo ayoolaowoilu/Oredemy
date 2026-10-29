@@ -6,9 +6,23 @@ const API_URL = (
 const TOKEN_KEY = "ordemy_token";
 
 export const tokenStorage = {
-  get: () => localStorage.getItem(TOKEN_KEY),
-  set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+  // "Remember me" stores the token in localStorage (survives browser restarts).
+  // Otherwise it lives in sessionStorage and is dropped when the tab closes.
+  get: () =>
+    localStorage.getItem(TOKEN_KEY) ?? sessionStorage.getItem(TOKEN_KEY),
+  set: (token: string, remember = true) => {
+    if (remember) {
+      localStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.removeItem(TOKEN_KEY);
+    } else {
+      sessionStorage.setItem(TOKEN_KEY, token);
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  },
+  clear: () => {
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+  },
 };
 
 export class ApiError extends Error {

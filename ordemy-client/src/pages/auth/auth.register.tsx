@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+﻿import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertCircle, Check, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
@@ -75,7 +75,7 @@ export default function Register() {
       </aside>
 
       {/* Form panel on the right */}
-      <div className="flex flex-1 items-center justify-center ml-20 px-4 py-10 lg:justify-between lg:pr-4">
+      <div className="flex flex-1 items-center justify-center px-4 py-10 lg:ml-20 lg:justify-between lg:pr-4">
         <div className="w-full max-w-lg">
           {/* Small logo shown only when the brand panel is hidden */}
           <Link
@@ -92,7 +92,7 @@ export default function Register() {
           <Card className="w-full border-0 shadow-none rounded-none bg-card-none">
             <CardHeader className="space-y-1">
               <CardTitle className="font-bold">Create an account</CardTitle>
-              <div className="flex flex-rol gap-3 mt-2">
+              <div className="flex flex-wrap gap-2 mt-2 sm:gap-3">
                 {(
                   [
                     ["student", "Student"],
@@ -117,11 +117,11 @@ export default function Register() {
             </CardHeader>
 
             <CardContent>
-              <form onSubmit={handleSubmit} autoComplete="off" className="space-y-5">
+              <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
                   <Input
                     id="name"
-                    autoComplete="off"
+                    autoComplete="name"
                     placeholder="Full name"
                     className="h-auto p-4 rounded-2xl hover:border-[#2501FF] focus-visible:border-[#2501FF] focus-visible:ring-[#2501FF]/25"
                     value={name}
@@ -134,7 +134,7 @@ export default function Register() {
                   <Input
                     id="email"
                     type="email"
-                    autoComplete="off"
+                    autoComplete="email"
                     placeholder="Email"
                     className="h-auto p-4 rounded-2xl hover:border-[#2501FF] focus-visible:border-[#2501FF] focus-visible:ring-[#2501FF]/25"
                     value={email}
@@ -211,7 +211,7 @@ export default function Register() {
                 )}
 
                 <Button type="submit" className="w-full h-12 rounded-2xl bg-[#2501FF] text-white hover:bg-[#2501FF] hover:text-white" disabled={submitting}>
-                  {submitting ? "Creating account…" : "Create Account"}
+                  {submitting ? "Creating account..." : "Create Account"}
                 </Button>
               </form>
 

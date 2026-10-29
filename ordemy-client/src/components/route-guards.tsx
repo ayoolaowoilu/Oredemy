@@ -13,6 +13,10 @@ export function ProtectedRoute({
   const { user, loading } = useAuth();
   const location = useLocation();
 
+  // Dev-only: lets any account preview /dashboard/admin before an admin
+  // account exists. This never applies to production builds.
+  if (import.meta.env.DEV && roles?.includes("admin")) return <Outlet />;
+
   if (loading) return <p>Loading…</p>;
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;

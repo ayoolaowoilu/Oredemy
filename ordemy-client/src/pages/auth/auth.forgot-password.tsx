@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from "react";
+﻿import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle } from "lucide-react";
 import { isValidEmail } from "./auth.helpers";
+import { BackButton } from "../../components/back-button";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import {
@@ -52,8 +53,9 @@ export default function ForgotPassword() {
       </aside>
 
       {/* Form panel on the right */}
-      <div className="flex flex-1 items-center justify-center ml-20 px-4 py-10 lg:justify-between lg:pr-4">
+      <div className="flex flex-1 items-center justify-center px-4 py-10 lg:ml-20 lg:justify-between lg:pr-4">
         <div className="w-full max-w-lg">
+          <BackButton className="mb-4" />
           {/* Small logo shown only when the brand panel is hidden */}
           <Link
             to="/"
@@ -92,13 +94,12 @@ export default function ForgotPassword() {
               ) : (
                 <form
                   onSubmit={handleSubmit}
-                  autoComplete="off"
                   className="space-y-5"
                 >
                   <Input
                     id="email"
                     type="email"
-                    autoComplete="off"
+                    autoComplete="email"
                     placeholder="Email"
                     className="h-auto p-4 rounded-2xl hover:border-[#2501FF] focus-visible:border-[#2501FF] focus-visible:ring-[#2501FF]/25"
                     value={email}
@@ -118,7 +119,7 @@ export default function ForgotPassword() {
                     className="w-full h-12 rounded-2xl bg-[#2501FF] text-white hover:bg-[#2501FF] hover:text-white"
                     disabled={submitting}
                   >
-                    {submitting ? "Sending…" : "Send reset link"}
+                    {submitting ? "Sending..." : "Send reset link"}
                   </Button>
                 </form>
               )}

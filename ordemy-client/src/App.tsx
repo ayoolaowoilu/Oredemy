@@ -1,5 +1,6 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/route-guards";
+import { RouteFallback } from "./components/route-fallback";
 import Login from "./pages/auth/auth.login";
 import Register from "./pages/auth/auth.register";
 import Terms from "./pages/auth/auth.terms";
@@ -16,6 +17,9 @@ import AdviserChat from "./pages/adviser/chat";
 import AdviserClassReps from "./pages/adviser/class-reps";
 import AdviserLayout from "./pages/adviser/layout";
 import AdviserOverview from "./pages/adviser/overview";
+import AdminLayout from "./pages/admin/layout";
+import AdminOverview from "./pages/admin/overview";
+import AdminSection from "./pages/admin/section";
 
 export default function App() {
   return (
@@ -48,11 +52,21 @@ export default function App() {
         </Route>
       </Route>
 
+      <Route element={<ProtectedRoute roles={["admin"]} />}>
+        <Route path="/dashboard/admin" element={<AdminLayout />}>
+          <Route index element={<AdminOverview />} />
+          <Route path="users" element={<AdminSection title="Users" />} />
+          <Route path="academics" element={<AdminSection title="Academics" />} />
+          <Route path="money" element={<AdminSection title="Money" />} />
+          <Route path="more" element={<AdminSection title="More" />} />
+        </Route>
+      </Route>
+
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<Home />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<RouteFallback />} />
     </Routes>
   );
 }
