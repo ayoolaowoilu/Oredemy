@@ -30,6 +30,7 @@ export interface AiGroup {
   question_ids: number[];
   draft_reply: string;
   status: "pending" | "sent";
+  auto_sent: boolean;
   created_at: string;
   sent_at: string | null;
 }
@@ -51,6 +52,50 @@ export interface SchedulerLog {
   details: string;
   created_at: string;
 }
+
+export interface AiNotification {
+  id: number;
+  run_id: number;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export const fetchAiPreferences = () =>
+  apiRequest<{ data: { ai_auto_replies: boolean } }>("/api/adviser/ai-preferences", {
+    token: getToken(),
+    cache: "no-store",
+  });
+
+export const updateAiPreferences = (aiAutoReplies: boolean) =>
+  apiRequest<{ data: { ai_auto_replies: boolean }; message: string }>(
+    "/api/adviser/ai-preferences",
+    {
+      method: "PATCH",
+      token: getToken(),
+      body: { ai_auto_replies: aiAutoReplies },
+    },
+  );
+
+export const fetchAiNotifications = () =>
+  apiRequest<{ data: AiNotification[]; unread_count: number }>(
+    "/api/adviser/ai-notifications",
+    { token: getToken(), cache: "no-store" },
+  );
+
+export const markAiNotificationRead = (id: number) =>
+  apiRequest<{ message: string }>(`/api/adviser/ai-notifications/${id}/read`, {
+    method: "PATCH",
+    token: getToken(),
+    body: {},
+  });
+
+export const markAllAiNotificationsRead = () =>
+  apiRequest<{ message: string }>("/api/adviser/ai-notifications/read-all", {
+    method: "PATCH",
+    token: getToken(),
+    body: {},
+  });
 
 export const fetchAdviserDashboard = () =>
   apiRequest<AdviserDashboard>("/api/adviser/dashboard", {
@@ -139,20 +184,6 @@ export const deleteLecturerCourse = (id: number) =>
   apiRequest<{ message: string }>(`/api/courses/${id}`, {
     method: "DELETE",
     token: getToken(),
-  });
-
-export const triggerAiRun = () =>
-  apiRequest<{
-    data: {
-      id: number;
-      status: "running" | "completed";
-      question_count: number;
-      error_message: string | null;
-    };
-  }>("/api/adviser/ai-runs/trigger", {
-    method: "POST",
-    token: getToken(),
-    body: {},
   });
 
 export const fetchAdviserConversations = () =>

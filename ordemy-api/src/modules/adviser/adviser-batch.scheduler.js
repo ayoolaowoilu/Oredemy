@@ -1,6 +1,12 @@
 import pool from "../../config/database.js";
 import { HttpError } from "../../utils/http-error.js";
-import { DEFAULT_MODEL, GROQ_BASE_URL, loadAiConfiguration } from "./adviser.services.js";
+import {
+    CreateAiRunNotification,
+    DEFAULT_MODEL,
+    GROQ_BASE_URL,
+    loadAiConfiguration,
+    SendAiGroup,
+} from "./adviser.services.js";
 
 const TIME_ZONE = "Africa/Lagos";
 const SCHEDULE_HOURS = [12, 13, 14, 15, 16, 17];
@@ -380,6 +386,33 @@ async function processSlot(lecturer, slot) {
             }
         }
 
+        if (lecturer.ai_auto_replies) {
+            const [pendingGroups] = await pool.query(
+                `SELECT id
+                 FROM adviser_ai_groups
+                 WHERE run_id = ? AND status = 'pending'
+                 ORDER BY id`,
+                [runId]
+            );
+            for (const group of pendingGroups) {
+                await SendAiGroup(lecturer.id, runId, group.id, { automated: true });
+            }
+        }
+
+        const [groupStats] = await pool.query(
+            `SELECT COUNT(*) AS group_count,
+                    COALESCE(SUM(auto_sent = TRUE), 0) AS auto_sent_count
+             FROM adviser_ai_groups
+             WHERE run_id = ?`,
+            [runId]
+        );
+        await CreateAiRunNotification(
+            lecturer.id,
+            runId,
+            Number(groupStats[0].group_count),
+            Number(groupStats[0].auto_sent_count)
+        );
+
         await pool.query(
             `UPDATE adviser_ai_runs
              SET status = 'completed', completed_at = CURRENT_TIMESTAMP
@@ -402,7 +435,7 @@ async function processSlot(lecturer, slot) {
 
 export async function RunAdviserAiNow(lecturerId) {
     const [lecturers] = await pool.query(
-        `SELECT id, department_id, session, is_verified
+        `SELECT id, department_id, session, is_verified, ai_auto_replies
          FROM users
          WHERE id = ? AND role = 'lecturer'`,
         [lecturerId]
@@ -465,7 +498,8 @@ async function schedulerTick() {
         if (!process.env.GROQ_API_KEY) return;
 
         const [lecturers] = await pool.query(
-            `SELECT users.id, users.department_id, users.session
+            `SELECT users.id, users.department_id, users.session,
+                    users.ai_auto_replies
              FROM users
              WHERE users.role = 'lecturer'
                AND users.is_verified = TRUE

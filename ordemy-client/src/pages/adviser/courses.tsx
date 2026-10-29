@@ -189,27 +189,48 @@ export default function AdviserCourses() {
             <p className="mt-3 text-sm text-slate-500">No courses have been added for this session yet.</p>
           </AdviserCard>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2">
-            {courses.map((course) => (
-              <AdviserCard key={course.id} className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[#2501FF]">
-                    {course.course_code} · {course.level} level
-                  </p>
-                  <h3 className="mt-1 truncate font-bold text-slate-950">{course.course_name}</h3>
-                  <p className="mt-1 text-xs text-slate-500">{course.units} unit{course.units === 1 ? "" : "s"}</p>
-                </div>
-                <button
-                  type="button"
-                  aria-label={`Delete ${course.course_code}`}
-                  disabled={busyId === course.id}
-                  onClick={() => void removeCourse(course)}
-                  className="grid size-10 shrink-0 place-items-center rounded-xl text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                >
-                  <Trash2 size={17} />
-                </button>
-              </AdviserCard>
-            ))}
+          <div className="overflow-x-auto rounded-2xl border border-[#F0ECFF] bg-white shadow-sm">
+            <table className="w-full min-w-[640px] border-collapse text-left">
+              <thead className="bg-[#FCFBFF]">
+                <tr className="border-b border-[#F0ECFF]">
+                  <th scope="col" className="px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">Course code</th>
+                  <th scope="col" className="px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">Course name</th>
+                  <th scope="col" className="px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">Level</th>
+                  <th scope="col" className="px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">Units</th>
+                  <th scope="col" className="px-5 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F5F2FF]">
+                {courses.map((course) => (
+                  <tr key={course.id} className="transition-colors hover:bg-[#FCFBFF]">
+                    <td className="whitespace-nowrap px-5 py-4 text-sm font-bold text-[#2501FF]">
+                      {course.course_code}
+                    </td>
+                    <td className="px-5 py-4 text-sm font-semibold text-slate-800">
+                      {course.course_name}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">
+                      {course.level} level
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">
+                      {course.units}
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <button
+                        type="button"
+                        aria-label={`Delete ${course.course_code}`}
+                        disabled={busyId === course.id}
+                        onClick={() => void removeCourse(course)}
+                        className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        <Trash2 size={15} />
+                        {busyId === course.id ? "Deleting…" : "Delete"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
