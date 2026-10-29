@@ -105,7 +105,7 @@ export default function StudentLayout() {
 
         {menuOpen && (
           <div
-            className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden"
+            className="fixed inset-0 z-40 flex justify-end bg-slate-950/40 lg:hidden"
             onClick={() => setMenuOpen(false)}
           >
             <aside
@@ -185,9 +185,6 @@ export default function StudentLayout() {
                 </NavLink>
                 <div>
                   <p className="hidden text-sm font-bold text-slate-900 lg:block">{currentPage}</p>
-                  <p className="flex items-center gap-1 text-[11px] font-medium text-slate-500 lg:hidden">
-                    Student <ChevronRight size={12} /> <span className="font-bold text-slate-800">{currentPage}</span>
-                  </p>
                   <p className="hidden text-xs text-slate-400 sm:block">
                     Your academic support, all in one place
                   </p>
@@ -201,18 +198,13 @@ export default function StudentLayout() {
                   </p>
                 </div>
                 <UserAvatar image={user?.image} name={user?.name} className="size-9 text-sm" />
-                <button
-                  type="button"
-                  onClick={signOut}
-                  aria-label="Sign out"
-                  className="grid size-9 place-items-center rounded-xl text-slate-400 hover:bg-slate-100 lg:hidden"
-                >
-                  <LogOut size={17} />
-                </button>
               </div>
             </div>
           </header>
           <div className="mx-auto max-w-[1260px] px-4 py-6 sm:px-7 sm:py-8 lg:px-10 lg:py-10">
+            <p className="mb-4 flex items-center gap-1 text-xs font-medium text-slate-500 lg:hidden">
+              Student <ChevronRight size={13} /> <span className="font-bold text-slate-800">{currentPage}</span>
+            </p>
             <Outlet />
           </div>
         </main>
