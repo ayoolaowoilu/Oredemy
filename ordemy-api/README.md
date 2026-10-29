@@ -885,7 +885,11 @@ Frontend request/response TypeScript definitions are in [`types.ts`](./types.ts)
 
 For an existing database, run [`migrations/20261028_add_adviser_ai.sql`](./migrations/20261028_add_adviser_ai.sql) once before starting the updated API. If that migration was already applied, also run [`migrations/20261029_scope_adviser_scheduler_logs.sql`](./migrations/20261029_scope_adviser_scheduler_logs.sql) to scope recovery logs to the adviser. New databases receive the complete schema from `data.sql`.
 
-Configure `GROQ_API_KEY` and optionally `GROQ_MODEL` in the API environment. The API key is server-only; it is not editable in the adviser dashboard or sent to the client. Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in the API environment to enable profile photo uploads. Keep all values private and out of source control. Groq receives the subject and text of questions selected for grouping. Generated replies remain drafts until an adviser reviews and sends them.
+For chat unread counts on an existing database, run [`migrations/20261029_add_chat_read_receipts.sql`](./migrations/20261029_add_chat_read_receipts.sql) once after the chat tables exist. New databases receive the read-receipt table from `data.sql`.
+
+Configure `GROQ_API_KEY` and optionally `GROQ_MODEL` in the **Render API service's Environment** settings (not the frontend's `VITE_` variables). Create a key at [Groq Console API Keys](https://console.groq.com/keys); see [Groq's Quickstart](https://console.groq.com/docs/quickstart) and [current rate limits](https://console.groq.com/docs/rate-limits). API access and free usage/limits can change, so check the current account plan and limits before relying on it. The key is server-only; it is not editable in the adviser dashboard or sent to the client.
+
+Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in the same API environment to enable profile photo uploads. Cloudinary offers a free plan with limits; check [current pricing](https://cloudinary.com/pricing). Keep all values private and out of source control. Groq receives the subject and text of questions selected for grouping. Generated replies remain drafts until an adviser reviews and sends them.
 
 The adviser endpoints are mounted under `/api/adviser` and require an authenticated, verified lecturer assigned to a department:
 

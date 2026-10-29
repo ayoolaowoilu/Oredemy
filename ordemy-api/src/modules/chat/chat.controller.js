@@ -3,6 +3,7 @@ import {
     ListClassSessions,
     ListConversations,
     ListMessages,
+    MarkConversationRead,
     SendMessage,
 } from "./chat.services.js";
 import { publishChatMessage } from "./chat.socket.js";
@@ -27,8 +28,16 @@ export async function listMessages(req, res) {
     );
 }
 
+export async function markConversationRead(req, res) {
+    return res.status(200).json(
+        await MarkConversationRead(req.params.id, req.authUser)
+    );
+}
+
 export async function sendMessage(req, res) {
     const data = await SendMessage(req.params.id, req.authUser, req.body?.body);
-    publishChatMessage(data);
+    void publishChatMessage(data).catch((error) => {
+        console.error("[chat] Could not publish message notification:", error);
+    });
     return res.status(201).json({ data });
 }

@@ -128,6 +128,12 @@ export const fetchAdviserMessages = (conversationId: string) =>
     { token: getToken(), cache: "no-store" },
   );
 
+export const markAdviserConversationRead = (conversationId: string) =>
+  apiRequest<{ data: { conversation_id: string; unread_count: number } }>(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}/read`,
+    { method: "POST", token: getToken(), body: {} },
+  );
+
 export const sendAdviserMessage = (
   conversationId: string,
   body: string,

@@ -5,6 +5,7 @@ import {
     listClassSessions,
     listConversations,
     listMessages,
+    markConversationRead,
     sendMessage,
 } from "./chat.controller.js";
 
@@ -15,6 +16,7 @@ router.get("/conversations", listConversations);
 router.get("/class-sessions", listClassSessions);
 router.post("/conversations", createConversation);
 router.get("/conversations/:id/messages", listMessages);
+router.post("/conversations/:id/read", markConversationRead);
 router.post("/conversations/:id/messages", sendMessage);
 
 export default router;

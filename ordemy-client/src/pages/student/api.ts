@@ -89,6 +89,12 @@ export const fetchConversationMessages = (conversationId: string) =>
     { token: getToken(), cache: "no-store" },
   );
 
+export const markConversationRead = (conversationId: string) =>
+  apiRequest<{ data: { conversation_id: string; unread_count: number } }>(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}/read`,
+    { method: "POST", token: getToken(), body: {} },
+  );
+
 export const sendConversationMessage = (
   conversationId: string,
   body: string,
