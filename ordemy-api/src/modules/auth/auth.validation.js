@@ -26,7 +26,7 @@ export function RegistrationSchema(userData) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userData.email)) {
         throw new HttpError(400, "Invalid email format");
     }
-    if (!/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/.test(userData.password)) {
+    if (!/[A-Za-z]/.test(userData.password) || !/\d/.test(userData.password)) {
         throw new HttpError(400, "Password must contain at least one letter and one number");
     }
     if (userData.name.length < 3) {
@@ -52,7 +52,7 @@ export function LoginSchema(userData) {
     if (userData.password.length < 6) {
         throw new HttpError(400, "Password must be at least 6 characters long");
     }
-     if (!/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/.test(userData.password)) {
+    if (!/[A-Za-z]/.test(userData.password) || !/\d/.test(userData.password)) {
         throw new HttpError(400, "Password must contain at least one letter and one number");
     }
 }
