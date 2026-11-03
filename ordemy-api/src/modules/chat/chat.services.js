@@ -2,6 +2,7 @@ import pool from "../../config/database.js";
 import { HttpError } from "../../utils/http-error.js";
 import { verifyToken } from "../../utils/jwt.js";
 import { v4 as uuidv4 } from "uuid";
+import { ClassifyStudentQuestion } from "./question-classifier.js";
 
 const MESSAGE_MAX_LENGTH = 5000;
 const CONVERSATION_ID_PATTERN =
@@ -450,14 +451,54 @@ export async function ListMessages(conversationId, user, query = {}) {
 export async function SendMessage(conversationId, user, body) {
     const messageBody = ValidateMessage(body);
     const conversation = await AuthorizeConversation(conversationId, user);
+    const shouldClassifyQuestion =
+        user.role === "student" && conversation.type === "lecturer";
+    let questionClassification = null;
+    let questionAnalysisStatus;
+    if (shouldClassifyQuestion) {
+        try {
+            questionClassification = await ClassifyStudentQuestion(messageBody);
+            questionAnalysisStatus = "saved";
+        } catch (error) {
+            console.error("[chat-ai] Could not classify student adviser message:", error);
+            questionClassification = {
+                subject: messageBody.trim().slice(0, 100),
+                query_type: "Other",
+            };
+            questionAnalysisStatus = "saved_with_default_type";
+        }
+    }
 
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
+        let queryId = null;
+        if (shouldClassifyQuestion) {
+            const [studentRows] = await connection.query(
+                "SELECT session FROM users WHERE id = ? AND role = 'student' FOR UPDATE",
+                [user.id]
+            );
+            if (!studentRows[0]) {
+                throw new HttpError(403, "Student account required to file an adviser question");
+            }
+            const [queryResult] = await connection.query(
+                `INSERT INTO queries
+                    (user_id, query_for, session, query, query_type, subject)
+                 VALUES (?, 'Department', ?, ?, ?, ?)`,
+                [
+                    user.id,
+                    studentRows[0].session,
+                    messageBody,
+                    questionClassification.query_type,
+                    questionClassification.subject,
+                ]
+            );
+            queryId = queryResult.insertId;
+        }
         const [result] = await connection.query(
-            `INSERT INTO chat_messages (conversation_id, sender_id, body)
-             VALUES (?, ?, ?)`,
-            [conversationId, user.id, messageBody]
+            `INSERT INTO chat_messages (conversation_id, sender_id, query_id, body)
+             VALUES (?, ?, ?, ?)`,
+            [conversationId, user.id, queryId, messageBody]
         );
         await connection.query(
             "UPDATE chat_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -482,7 +523,17 @@ export async function SendMessage(conversationId, user, body) {
             [result.insertId]
         );
         await connection.commit();
-        return rows[0];
+        return {
+            ...rows[0],
+            ...(shouldClassifyQuestion
+                ? {
+                    question_analysis_status: questionAnalysisStatus,
+                    ...(questionClassification
+                        ? { question_type: questionClassification.query_type }
+                        : {}),
+                }
+                : {}),
+        };
     } catch (error) {
         await connection.rollback();
         throw error;

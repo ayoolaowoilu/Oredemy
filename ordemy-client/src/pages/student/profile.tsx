@@ -31,10 +31,10 @@ export default function StudentProfile() {
         Profile
       </h1>
 
-      <div className="mt-7 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-        <section className="rounded-3xl border border-[#F0ECFF] bg-white p-8 sm:p-10">
+      <div className="mt-5 grid gap-4 lg:mt-7 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-5">
+        <section className="rounded-2xl border border-[#F0ECFF] bg-white p-5 sm:rounded-3xl sm:p-8 lg:p-10">
           <div className="flex flex-col items-center text-center">
-            <span className="grid size-24 shrink-0 place-items-center overflow-hidden rounded-full bg-[#2501FF] text-4xl font-extrabold text-white sm:size-28">
+            <span className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-full bg-[#2501FF] text-3xl font-extrabold text-white sm:size-28 sm:text-4xl">
               {user?.image ? (
                 <img
                   src={user.image}
@@ -45,7 +45,7 @@ export default function StudentProfile() {
                 initial
               )}
             </span>
-            <p className="mt-6 text-2xl font-extrabold sm:text-[28px]">
+            <p className="mt-4 break-words text-xl font-extrabold sm:mt-6 sm:text-[28px]">
               {user?.name ?? "Student"}
             </p>
             <p className="mt-2 text-sm text-slate-400 sm:text-base">
@@ -57,20 +57,20 @@ export default function StudentProfile() {
         <div className="flex flex-col gap-3">
           <Link
             to="/dashboard/student/settings"
-            className="w-full rounded-2xl bg-[#F1EDFF] px-5 py-3.5 text-center text-sm font-semibold text-[#2501FF] transition-colors hover:bg-[#E9E5FF]"
+            className="flex min-h-11 w-full items-center justify-center rounded-2xl bg-[#F1EDFF] px-4 py-3 text-center text-sm font-semibold text-[#2501FF] transition-colors hover:bg-[#E9E5FF] sm:px-5 sm:py-3.5"
           >
             Settings and Privacy
           </Link>
           <Link
             to="/terms"
-            className="w-full rounded-2xl bg-[#F1EDFF] px-5 py-3.5 text-center text-sm font-semibold text-[#2501FF] transition-colors hover:bg-[#E9E5FF]"
+            className="flex min-h-11 w-full items-center justify-center rounded-2xl bg-[#F1EDFF] px-4 py-3 text-center text-sm font-semibold text-[#2501FF] transition-colors hover:bg-[#E9E5FF] sm:px-5 sm:py-3.5"
           >
             Terms
           </Link>
           <button
             type="button"
             onClick={signOut}
-            className="w-full rounded-2xl bg-[#2501FF] px-5 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D01CC]"
+            className="min-h-11 w-full rounded-2xl bg-[#2501FF] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#1D01CC] sm:px-5 sm:py-3.5"
           >
             Sign out
           </button>

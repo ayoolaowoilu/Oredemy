@@ -31,7 +31,7 @@ import {
 } from "./shared";
 
 const inputClass =
-  "mt-2 w-full rounded-xl border border-[#E9E5FF] bg-white px-3.5 py-3 text-sm text-[#0B1030] outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10 disabled:bg-slate-50 disabled:text-slate-400";
+  "mt-2 min-h-11 w-full rounded-xl border border-[#E9E5FF] bg-white px-3 py-2.5 text-sm text-[#0B1030] outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10 disabled:bg-slate-50 disabled:text-slate-400 sm:px-3.5 sm:py-3";
 
 const notificationOptions = [
   { key: "replies", label: "Adviser replies", note: "Tell me when my adviser responds." },
@@ -406,7 +406,7 @@ export default function StudentSettings() {
                 ))}
               </select>
             </label>
-            <div className="flex items-center justify-between gap-3 border-t border-[#F5F2FF] pt-4">
+            <div className="flex flex-col items-stretch gap-3 border-t border-[#F5F2FF] pt-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-slate-400">
                 {currentSession
                   ? `Current session: ${currentSession.label}`
@@ -414,6 +414,7 @@ export default function StudentSettings() {
               </p>
               <PrimaryButton
                 type="submit"
+                className="w-full sm:w-auto"
                 disabled={
                   savingAcademic || !facultyId || !departmentId || !admissionSession
                 }
@@ -450,14 +451,15 @@ export default function StudentSettings() {
                   aria-checked={notifications[option.key]}
                   aria-label={option.label}
                   onClick={() => toggleNotification(option.key)}
-                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  className={`relative h-11 w-12 shrink-0 rounded-full p-2 transition-colors ${
                     notifications[option.key] ? "bg-[#2501FF]" : "bg-slate-200"
                   }`}
                 >
                   <span
-                    className={`absolute top-0.5 size-5 rounded-full bg-white transition-transform ${
-                      notifications[option.key] ? "translate-x-5" : "translate-x-0.5"
+                    className={`absolute left-2 top-1/2 size-5 -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform ${
+                      notifications[option.key] ? "translate-x-4" : "translate-x-0"
                     }`}
+                    aria-hidden="true"
                   />
                 </button>
               </div>
@@ -485,7 +487,7 @@ export default function StudentSettings() {
           <button
             type="button"
             onClick={signOut}
-            className="mt-4 w-full rounded-full bg-[#2501FF] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#1D01CC]"
+            className="mt-4 min-h-11 w-full rounded-full bg-[#2501FF] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#1D01CC] sm:px-5"
           >
             Sign out
           </button>
