@@ -304,7 +304,10 @@ export default function Onboarding() {
       )}
 
       {loading ? (
-        <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Loading schools…</p>
+        <div className="space-y-2" role="status" aria-label="Loading schools">
+          <div className="h-12 animate-pulse rounded-xl bg-[#F7F5FF]" />
+          <div className="h-4 w-1/3 animate-pulse rounded-full bg-slate-100" />
+        </div>
       ) : schools.length === 0 && !error ? (
         <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No schools are available yet.</p>
       ) : null}

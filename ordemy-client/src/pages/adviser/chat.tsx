@@ -11,6 +11,7 @@ import { notifyChatRead } from "../../hooks/use-chat-unread-count";
 import { useAuth } from "../../context/useAuth";
 import type { ChatConversation, ChatMessage } from "../../utils/types";
 import { UserAvatar } from "../../components/user-avatar";
+import { SkeletonList } from "../../components/loading-states";
 import {
   connectAdviserSocket,
   fetchAdviserConversations,
@@ -317,7 +318,7 @@ export default function AdviserChat() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
               {loading ? (
-                <p className="p-3 text-xs text-slate-400">Loading conversations…</p>
+                <SkeletonList rows={3} />
               ) : conversations.length ? conversations.map((item) => (
                 <button
                   type="button"
