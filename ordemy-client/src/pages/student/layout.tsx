@@ -41,6 +41,7 @@ export default function StudentLayout() {
         ? location.pathname === link.to
         : location.pathname.startsWith(link.to),
     )?.label ?? "Student workspace";
+  const isAdviserChat = location.pathname === "/dashboard/student/chat";
 
   function signOut() {
     logout();
@@ -77,7 +78,7 @@ export default function StudentLayout() {
               >
                 <Icon size={18} strokeWidth={1.8} />
                 <span className="flex-1">{label}</span>
-                {label === "Adviser chat" && unreadCount > 0 && (
+                {label === "Ask your adviser" && unreadCount > 0 && (
                   <span className="grid min-w-5 place-items-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                     {unreadBadge}
                   </span>
@@ -105,6 +106,8 @@ export default function StudentLayout() {
             onClick={() => setMenuOpen(false)}
           >
             <aside
+              id="student-mobile-menu"
+              aria-label="Student navigation menu"
               className="flex h-full w-[min(84vw,340px)] flex-col bg-white p-5 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
             >
@@ -137,14 +140,14 @@ export default function StudentLayout() {
                     end={end}
                     onClick={() => setMenuOpen(false)}
                     className={({ isActive }) =>
-                      `flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${
+                      `flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${
                         isActive ? "bg-[#2501FF]/[0.07] text-[#2501FF]" : "text-slate-600 hover:bg-slate-50"
                       }`
                     }
                   >
                     <Icon size={18} />
                     <span className="flex-1">{label}</span>
-                    {label === "Adviser chat" && unreadCount > 0 && (
+                    {label === "Ask your adviser" && unreadCount > 0 && (
                       <span className="grid min-w-5 place-items-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                         {unreadBadge}
                       </span>
@@ -165,7 +168,7 @@ export default function StudentLayout() {
         )}
 
         <main className="min-w-0 flex-1">
-          <header className="sticky top-0 z-10 border-b border-[#F0ECFF] bg-white px-4 py-4 sm:px-7 lg:px-10">
+          <header className="sticky top-0 z-10 border-b border-[#F0ECFF] bg-white px-3 py-3 sm:px-7 sm:py-4 lg:px-10">
             <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <NavLink to="/dashboard/student" className="lg:hidden">
@@ -189,6 +192,8 @@ export default function StudentLayout() {
                   type="button"
                   onClick={() => setMenuOpen(true)}
                   aria-label="Open menu"
+                  aria-expanded={menuOpen}
+                  aria-controls={menuOpen ? "student-mobile-menu" : undefined}
                   className="grid size-10 place-items-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 lg:hidden"
                 >
                   <Menu size={19} />
@@ -196,10 +201,18 @@ export default function StudentLayout() {
               </div>
             </div>
           </header>
-          <div className="mx-auto max-w-[1260px] px-4 py-6 sm:px-7 sm:py-8 lg:px-10 lg:py-10">
-            <p className="mb-4 flex items-center gap-1 text-xs font-medium text-slate-500 lg:hidden">
-              Student <ChevronRight size={13} /> <span className="font-bold text-slate-800">{currentPage}</span>
-            </p>
+          <div
+            className={`mx-auto max-w-[1260px] px-3 sm:px-7 lg:px-10 ${
+              isAdviserChat
+                ? "h-[calc(100dvh-64px)] overflow-hidden py-2 sm:h-[calc(100dvh-72px)] sm:py-3 lg:py-3"
+                : "py-4 sm:py-8 lg:py-10"
+            }`}
+          >
+            {!isAdviserChat && (
+              <p className="mb-3 flex items-center gap-1 text-[11px] font-medium text-slate-500 sm:mb-4 sm:text-xs lg:hidden">
+                Student <ChevronRight size={13} /> <span className="font-bold text-slate-800">{currentPage}</span>
+              </p>
+            )}
             <Outlet />
           </div>
         </main>

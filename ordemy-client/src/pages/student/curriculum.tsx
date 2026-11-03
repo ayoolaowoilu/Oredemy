@@ -155,7 +155,7 @@ export default function StudentCurriculum() {
         action={
           <Link
             to="/dashboard/student/questions"
-            className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF]"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-4 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF] sm:px-5"
           >
             Ask about courses <ArrowRight size={16} />
           </Link>
@@ -218,14 +218,14 @@ export default function StudentCurriculum() {
         />
       </div>
 
-      <section className="mt-7">
+      <section className="mt-5 sm:mt-7">
         <Card>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
                 Current session courses
               </p>
-              <h2 className="mt-1 text-lg font-bold text-[#0B1030]">
+              <h2 className="mt-1 break-words text-lg font-bold text-[#0B1030]">
                 {coursesLevel ? `${coursesLevel} level · ${coursesSession}` : coursesSession || currentSession.label}
               </h2>
             </div>
@@ -240,41 +240,57 @@ export default function StudentCurriculum() {
               {coursesError}
             </p>
           ) : coursesLoading ? (
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-4 space-y-2 sm:mt-5">
               {[1, 2, 3].map((item) => (
-                <div key={item} className="h-20 animate-pulse rounded-xl bg-slate-100" />
+                <div key={item} className="h-12 animate-pulse rounded-lg bg-slate-100" />
               ))}
             </div>
           ) : courses.length === 0 ? (
-            <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-500">
+            <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-500 sm:p-4">
               {coursesLevel
                 ? `No courses have been added for your department and ${coursesLevel} level in ${coursesSession}. Check back after your lecturer publishes them.`
                 : "Complete your academic profile with a department and admission session to see your courses."}
             </p>
           ) : (
-            <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {courses.map((course) => (
-                <li key={course.id} className="rounded-xl border border-[#F0ECFF] bg-[#FCFBFF] p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="rounded-lg bg-[#2501FF]/[0.08] px-2.5 py-1 text-xs font-bold text-[#2501FF]">
-                      {course.course_code}
-                    </span>
-                    <span className="shrink-0 text-xs font-semibold text-slate-500">
-                      {course.units} unit{course.units === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  <h3 className="mt-3 text-sm font-bold text-[#0B1030]">{course.course_name}</h3>
-                  {course.lecturer_name && (
-                    <p className="mt-1 text-xs text-slate-500">Added by {course.lecturer_name}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <div className="mt-4 overflow-hidden rounded-xl border border-[#F0ECFF] sm:mt-5">
+              <table className="w-full table-fixed text-left">
+                <caption className="sr-only">
+                  Courses for {coursesLevel} level in {coursesSession}
+                </caption>
+                <thead className="bg-[#FCFBFF] text-[10px] font-bold uppercase tracking-wide text-slate-500 sm:text-xs">
+                  <tr>
+                    <th scope="col" className="w-[28%] px-2.5 py-2.5 sm:px-4 sm:py-3">Code</th>
+                    <th scope="col" className="px-2.5 py-2.5 sm:px-4 sm:py-3">Course</th>
+                    <th scope="col" className="w-[20%] px-2.5 py-2.5 text-right sm:w-[16%] sm:px-4 sm:py-3">Units</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F0ECFF]">
+                  {courses.map((course) => (
+                    <tr key={course.id} className="align-top">
+                      <td className="break-words px-2.5 py-3 text-xs font-bold text-[#2501FF] sm:px-4">
+                        {course.course_code}
+                      </td>
+                      <td className="break-words px-2.5 py-3 text-xs font-semibold leading-5 text-[#0B1030] sm:px-4 sm:text-sm">
+                        {course.course_name}
+                        {course.lecturer_name && (
+                          <span className="mt-0.5 block text-[10px] font-normal text-slate-500 sm:text-xs">
+                            Added by {course.lecturer_name}
+                          </span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-2.5 py-3 text-right text-xs text-slate-600 sm:px-4 sm:text-sm">
+                        {course.units}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </section>
 
-      <div className="mt-7 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+      <div className="mt-5 grid gap-4 xl:mt-7 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] xl:gap-5">
         <Card>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -374,7 +390,7 @@ export default function StudentCurriculum() {
                     type="button"
                     onClick={() => toggleCheck(item.key)}
                     aria-pressed={Boolean(checked[item.key])}
-                    className="flex w-full items-start gap-3 rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-[#FCFBFF]"
+                    className="flex min-h-11 w-full items-start gap-3 rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-[#FCFBFF]"
                   >
                     {checked[item.key] ? (
                       <CheckCircle2

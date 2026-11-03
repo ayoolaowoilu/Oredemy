@@ -72,14 +72,14 @@ export default function StudentOverview() {
     <>
       {error && <Notice onDismiss={() => setError("")}>{error}</Notice>}
 
-      <h1 className="text-2xl font-extrabold tracking-tight text-[#0B1030] sm:text-[32px]">
+      <h1 className="break-words text-2xl font-extrabold tracking-tight text-[#0B1030] sm:text-[32px]">
         Welcome back, {user?.name ?? "Student"}
       </h1>
       <p className="mt-2 text-sm text-slate-500">
         {subtitle || "Your student workspace"}
       </p>
 
-      <div className="mt-7 grid gap-4 sm:grid-cols-2">
+      <div className="mt-5 grid gap-3 sm:mt-7 sm:grid-cols-2 sm:gap-4">
         <StatCard
           icon={<Clock3 size={19} />}
           label="Waiting for reply"
@@ -96,9 +96,9 @@ export default function StudentOverview() {
         />
       </div>
 
-      <section className="mt-10">
+      <section className="mt-7 sm:mt-10">
         <h2 className="text-lg font-bold text-[#0B1030]">What do you need?</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-3 grid gap-3 sm:mt-4 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           <Shortcut
             to="/dashboard/student/chat"
             icon={<MessageCircle size={19} />}
@@ -199,7 +199,7 @@ function Shortcut({
     return (
       <div
         aria-disabled="true"
-        className="cursor-not-allowed rounded-3xl border border-[#F0ECFF] bg-white p-5 opacity-60 grayscale"
+        className="cursor-not-allowed rounded-2xl border border-[#F0ECFF] bg-white p-4 opacity-60 grayscale sm:rounded-3xl sm:p-5"
       >
         {content}
       </div>
@@ -209,7 +209,7 @@ function Shortcut({
   return (
     <Link
       to={to}
-      className="group rounded-3xl border border-[#F0ECFF] bg-white p-5 transition-colors hover:border-[#2501FF]/25 hover:bg-[#FCFBFF]"
+      className="group rounded-2xl border border-[#F0ECFF] bg-white p-4 transition-colors hover:border-[#2501FF]/25 hover:bg-[#FCFBFF] sm:rounded-3xl sm:p-5"
     >
       {content}
     </Link>

@@ -102,14 +102,14 @@ export default function StudentClassRep() {
                 )
                 .finally(() => setLoading(false));
             }}
-            className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF]"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-4 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF] sm:px-5"
           >
             <RefreshCw size={15} /> Refresh
           </button>
         }
       />
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
+      <div className="grid items-start gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
         <Card>
           <span className="grid size-11 place-items-center rounded-xl bg-[#2501FF]/[0.08] text-[#2501FF]">
             <UsersRound size={20} />
@@ -122,7 +122,7 @@ export default function StudentClassRep() {
             current session.
           </p>
 
-          <div className="mt-5 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
+          <div className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-3 sm:mt-5 sm:grid-cols-2 sm:p-4">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                 Department
@@ -183,7 +183,7 @@ export default function StudentClassRep() {
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 maxLength={1000}
-                rows={4}
+                rows={3}
                 placeholder="Share why you’d like to help represent your class."
                 className="w-full resize-y rounded-xl border border-[#E9E5FF] px-3.5 py-3 text-sm leading-6 outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10"
               />
@@ -195,6 +195,7 @@ export default function StudentClassRep() {
                 </p>
                 <PrimaryButton
                   type="submit"
+                  className="w-full sm:w-auto"
                   disabled={
                     submitting || !user?.department_id || !user.session
                   }

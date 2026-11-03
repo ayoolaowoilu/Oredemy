@@ -87,11 +87,17 @@ export const createAdviserConversation = () =>
     body: { type: "lecturer" },
   });
 
-export const fetchConversationMessages = (conversationId: string) =>
-  apiRequest<{ data: ChatMessage[] }>(
-    `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
+export const fetchConversationMessages = (
+  conversationId: string,
+  { limit = 50, before }: { limit?: number; before?: number } = {},
+) => {
+  const search = new URLSearchParams({ limit: String(limit) });
+  if (before !== undefined) search.set("before", String(before));
+  return apiRequest<{ data: ChatMessage[] }>(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages?${search}`,
     { token: getToken(), cache: "no-store" },
   );
+};
 
 export const markConversationRead = (conversationId: string) =>
   apiRequest<{ data: { conversation_id: string; unread_count: number } }>(

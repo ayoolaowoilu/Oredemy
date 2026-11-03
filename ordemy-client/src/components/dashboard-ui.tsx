@@ -12,9 +12,9 @@ export function PageIntro({
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+    <div className="mb-5 flex flex-col justify-between gap-3 sm:mb-7 sm:flex-row sm:items-end sm:gap-4">
       <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-[#2501FF]">
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#2501FF] sm:mb-2 sm:text-xs sm:tracking-[0.15em]">
           {eyebrow}
         </p>
         <h1 className="text-2xl font-extrabold tracking-tight text-[#0B1030] sm:text-[32px]">
@@ -40,8 +40,8 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-3xl border border-[#F0ECFF] bg-white ${
-        padded ? "p-5 sm:p-6" : ""
+      className={`rounded-2xl border border-[#F0ECFF] bg-white sm:rounded-3xl ${
+        padded ? "p-4 sm:p-5 lg:p-6" : ""
       } ${className}`}
     >
       {children}
@@ -67,7 +67,7 @@ export function Notice({
   return (
     <div
       role={tone === "error" ? "alert" : "status"}
-      className={`mb-5 flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${style}`}
+      className={`mb-4 flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm sm:mb-5 sm:rounded-2xl sm:px-4 sm:py-3 ${style}`}
     >
       {children}
       {onDismiss && (
@@ -102,7 +102,7 @@ export function PrimaryButton({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-2 rounded-full bg-[#2501FF] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D01CC] disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#2501FF] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D01CC] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${className}`}
     >
       {children}
     </button>
@@ -127,7 +127,7 @@ export function OutlineButton({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] transition-colors hover:bg-[#F1EDFF] disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-4 py-2.5 text-sm font-semibold text-[#2501FF] transition-colors hover:bg-[#F1EDFF] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${className}`}
     >
       {children}
     </button>
@@ -155,7 +155,7 @@ export function StatCard({
           {icon}
         </span>
       </div>
-      <p className="mt-4 text-3xl font-extrabold tracking-tight text-[#0B1030]">
+      <p className="mt-3 text-2xl font-extrabold tracking-tight text-[#0B1030] sm:mt-4 sm:text-3xl">
         {value}
       </p>
       {note && <p className="mt-1 text-xs leading-5 text-slate-400">{note}</p>}

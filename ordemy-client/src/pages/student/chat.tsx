@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDown, ArrowLeft, MessageCircle, RefreshCw, Send } from "lucide-react";
+import { ArrowDown, LoaderCircle, MessageCircle, RefreshCw, Send } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { notifyChatRead } from "../../hooks/use-chat-unread-count";
 import { ApiError } from "../../lib/api";
 import { connectChatSocket } from "../../utils/chat-socket";
 import type { ChatConversation, ChatMessage } from "../../utils/types";
 import { UserAvatar } from "../../components/user-avatar";
-import { SkeletonList } from "../../components/loading-states";
 import {
   createAdviserConversation,
   fetchChatConversations,
@@ -15,35 +14,41 @@ import {
   markConversationRead,
   sendConversationMessage,
 } from "./api";
-import { Card, Notice, PageIntro, PrimaryButton } from "./shared";
+import { Card, Notice, PrimaryButton } from "./shared";
 
 export default function StudentChat() {
   const { user } = useAuth();
-  const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(true);
   const [sending, setSending] = useState(false);
-  const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
+  const [messagesError, setMessagesError] = useState("");
   const [analysisNotice, setAnalysisNotice] = useState("");
-  const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
   const scrollContainer = useRef<HTMLDivElement>(null);
   const socketRef = useRef<ReturnType<typeof connectChatSocket> | null>(null);
+  const loadingOlderRef = useRef(false);
+  const pendingScrollRestore = useRef<{ height: number; top: number } | null>(null);
+  const stickToBottom = useRef(true);
   const conversationId = conversation?.id ?? null;
 
   const markRead = useCallback(async (id: string) => {
     await markConversationRead(id);
-    setConversations((current) =>
-      current.map((item) => item.id === id ? { ...item, unread_count: 0 } : item),
-    );
     notifyChatRead();
   }, []);
 
   const loadMessages = useCallback(async (conversationId: string) => {
     const response = await fetchConversationMessages(conversationId);
-    setMessages(response.data);
+    setMessages((current) => {
+      const byId = new Map(current.map((message) => [message.id, message]));
+      for (const message of response.data) byId.set(message.id, message);
+      return [...byId.values()].sort((left, right) => left.id - right.id);
+    });
+    setHasOlderMessages(response.data.length === 50);
     await markRead(conversationId);
   }, [markRead]);
 
@@ -65,49 +70,14 @@ export default function StudentChat() {
         });
       }
     };
-    const onNotification = (message: ChatMessage) => {
-      if (message.sender_id === user?.id) return;
-      const isVisibleConversation =
-        message.conversation_id === conversationId &&
-        document.visibilityState === "visible";
-      setConversations((current) =>
-        current.map((item) => item.id === message.conversation_id
-          ? {
-              ...item,
-              last_message: message.body,
-              last_message_at: message.created_at,
-              unread_count: isVisibleConversation ? 0 : Number(item.unread_count ?? 0) + 1,
-            }
-          : item),
-      );
-      if (isVisibleConversation) {
-        void markRead(message.conversation_id).catch((readError: unknown) => {
-          setError(readError instanceof Error ? readError.message : "Could not mark messages as read.");
-        });
-      }
-    };
-    const onConnect = () => {
-      setConnected(true);
-      join();
-    };
-    const onDisconnect = () => setConnected(false);
-    const onConnectError = (connectionError: Error) => {
-      setConnected(false);
-      setError(`Live chat connection failed: ${connectionError.message}`);
-    };
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
-    socket.on("connect_error", onConnectError);
+    const onConnect = () => join();
     socket.on("chat:message", onMessage);
-    socket.on("chat:notification", onNotification);
+    socket.on("connect", onConnect);
     if (socket.connected) onConnect();
     return () => {
       if (socket.connected) socket.emit("chat:leave", { conversationId });
       socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
-      socket.off("connect_error", onConnectError);
       socket.off("chat:message", onMessage);
-      socket.off("chat:notification", onNotification);
       socket.disconnect();
       socketRef.current = null;
     };
@@ -123,7 +93,6 @@ export default function StudentChat() {
           adviserConversation = (await createAdviserConversation()).data;
         }
         if (!active) return;
-        setConversations([adviserConversation]);
         setConversation(adviserConversation);
       } catch (loadError: unknown) {
         if (active) {
@@ -150,6 +119,8 @@ export default function StudentChat() {
       .then((response) => {
         if (active) {
           setMessages(response.data);
+          setHasOlderMessages(response.data.length === 50);
+          setMessagesLoading(false);
           void markRead(conversationId).catch((readError: unknown) => {
             if (active) {
               setError(readError instanceof Error ? readError.message : "Could not mark messages as read.");
@@ -159,7 +130,8 @@ export default function StudentChat() {
       })
       .catch((loadError: unknown) => {
         if (active) {
-          setError(
+          setMessagesLoading(false);
+          setMessagesError(
             loadError instanceof ApiError || loadError instanceof Error
               ? loadError.message
               : "Messages could not be loaded.",
@@ -171,22 +143,76 @@ export default function StudentChat() {
     };
   }, [conversationId, markRead]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = scrollContainer.current;
-    if (container) container.scrollTop = container.scrollHeight;
+    if (!container) return;
+    if (pendingScrollRestore.current) {
+      const { height, top } = pendingScrollRestore.current;
+      container.scrollTop = top + container.scrollHeight - height;
+      pendingScrollRestore.current = null;
+    } else if (stickToBottom.current) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages.length]);
+
+  async function loadOlderMessages() {
+    const container = scrollContainer.current;
+    const oldestMessageId = messages[0]?.id;
+    if (
+      !conversation ||
+      !container ||
+      !oldestMessageId ||
+      !hasOlderMessages ||
+      loadingOlderRef.current
+    ) {
+      return;
+    }
+
+    loadingOlderRef.current = true;
+    setLoadingOlderMessages(true);
+    pendingScrollRestore.current = {
+      height: container.scrollHeight,
+      top: container.scrollTop,
+    };
+    try {
+      const response = await fetchConversationMessages(conversation.id, {
+        before: oldestMessageId,
+      });
+      setMessages((current) => {
+        const byId = new Map(current.map((message) => [message.id, message]));
+        for (const message of response.data) byId.set(message.id, message);
+        return [...byId.values()].sort((left, right) => left.id - right.id);
+      });
+      setHasOlderMessages(response.data.length === 50);
+      if (response.data.length === 0) pendingScrollRestore.current = null;
+    } catch (loadError: unknown) {
+      pendingScrollRestore.current = null;
+      setError(
+        loadError instanceof ApiError || loadError instanceof Error
+          ? loadError.message
+          : "Older messages could not be loaded.",
+      );
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlderMessages(false);
+    }
+  }
 
   async function refresh() {
     if (!conversation) return;
-    setError("");
+    setMessagesError("");
+    setMessagesLoading(true);
     try {
+      stickToBottom.current = true;
       await loadMessages(conversation.id);
     } catch (refreshError) {
-      setError(
+      setMessagesError(
         refreshError instanceof Error
           ? refreshError.message
           : "Could not refresh this conversation.",
       );
+    } finally {
+      setMessagesLoading(false);
     }
   }
 
@@ -255,113 +281,79 @@ export default function StudentChat() {
   }
 
   return (
-    <>
+    <div className="flex h-full min-h-0 flex-col gap-2">
       {error && <Notice onDismiss={() => setError("")}>{error}</Notice>}
       {analysisNotice && (
         <Notice tone="success" onDismiss={() => setAnalysisNotice("")}>
           {analysisNotice}
         </Notice>
       )}
-      <PageIntro
-        eyebrow="Department community"
-        title="Adviser chat"
-        description="Every message you send to your adviser is saved as a question for their inbox. The type is selected automatically, including for messages written in Pidgin."
-        action={
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            disabled={!conversation || loading}
-            className="inline-flex items-center gap-2 rounded-full border border-[#F0ECFF] bg-[#F7F5FF] px-5 py-2.5 text-sm font-semibold text-[#2501FF] hover:bg-[#F1EDFF] disabled:opacity-50"
-          >
-            <RefreshCw size={15} /> Refresh
-          </button>
-        }
-      />
-      <Card className="overflow-hidden p-0">
-        <div className="grid h-[min(72vh,700px)] min-h-[500px] md:grid-cols-[290px_minmax(0,1fr)]">
-          <aside className={`${mobileConversationOpen ? "hidden" : "flex"} min-h-0 flex-col border-b border-slate-200 md:flex md:border-b-0 md:border-r`}>
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4">
-              <div>
-                <p className="text-sm font-bold text-slate-900">Your chats</p>
-                <p className="mt-0.5 text-[11px] text-slate-400">Private adviser conversation</p>
-              </div>
-              <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold ${connected ? "text-emerald-700" : "text-slate-400"}`}>
-                <span className={`size-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-400"}`} />
-                {connected ? "Live" : "Offline"}
-              </span>
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+        {loading ? (
+          <div className="grid flex-1 place-items-center p-6" role="status" aria-live="polite">
+            <div className="flex flex-col items-center text-center">
+              <LoaderCircle className="animate-spin text-[#2501FF]" size={28} />
+              <p className="mt-3 text-sm font-semibold text-slate-700">Opening your adviser chat…</p>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {loading ? (
-                <SkeletonList rows={3} />
-              ) : (
-                conversations.map((item) => (
-                  <button
-                    type="button"
-                    key={item.id}
-                    onClick={() => {
-                      if (conversation?.id !== item.id) {
-                        setMessages([]);
-                        setConversation(item);
-                      }
-                      setMobileConversationOpen(true);
-                    }}
-                    className={`mb-1 flex w-full items-center gap-3 rounded-xl p-3 text-left transition ${
-                      conversation?.id === item.id ? "bg-[#2501FF]/[0.07]" : "hover:bg-slate-50"
-                    }`}
-                  >
-                    <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#2501FF]/[0.08] text-[#2501FF]">
-                      <MessageCircle size={19} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-bold text-slate-900">Adviser chat</span>
-                      <span className="mt-1 block truncate text-xs text-slate-500">
-                        {item.last_message ?? `${item.lecturer_name ?? "Department adviser"}`}
-                      </span>
-                    </span>
-                    {Number(item.unread_count) > 0 && (
-                      <span className="grid min-w-5 shrink-0 place-items-center rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                        {Number(item.unread_count) > 99 ? "99+" : item.unread_count}
-                      </span>
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
-          </aside>
-
-          <section className={`${mobileConversationOpen ? "flex" : "hidden"} min-h-0 min-w-0 flex-col md:flex`}>
-            {conversation ? (
+          </div>
+        ) : conversation ? (
               <>
-                <div className="flex items-center gap-3 border-b border-slate-100 px-3 py-3 sm:px-6 sm:py-4">
-                  <button
-                    type="button"
-                    onClick={() => setMobileConversationOpen(false)}
-                    aria-label="Back to conversations"
-                    className="grid size-9 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-slate-100 md:hidden"
-                  >
-                    <ArrowLeft size={18} />
-                  </button>
-                  <UserAvatar image={conversation.lecturer_image} name={conversation.lecturer_name} className="size-10" />
+                <div className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-3 py-2.5 sm:px-5 sm:py-3">
+                  <UserAvatar image={conversation.lecturer_image} name={conversation.lecturer_name} className="size-9 sm:size-10" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-slate-900">{conversation.lecturer_name ?? "Department adviser"}</p>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">
-                      {user?.department ?? "Your department"} · replies appear here
+                    <p className="truncate text-[11px] text-slate-500 sm:text-xs">
+                      {user?.department ?? "Your department"} · questions are saved automatically
                     </p>
                   </div>
-                  <span className={`hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold sm:inline-flex ${connected ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                    <span className={`size-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-400"}`} />
-                    {connected ? "Live" : "Offline"}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void refresh()}
+                    disabled={messagesLoading}
+                    aria-label="Refresh messages"
+                    className="grid size-10 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    <RefreshCw size={17} />
+                  </button>
                 </div>
 
         <div
           ref={scrollContainer}
-          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-[#fafaff] px-4 py-5 sm:px-6"
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            stickToBottom.current =
+              element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+            if (
+              element.scrollTop < 32 &&
+              hasOlderMessages &&
+              !loadingOlderMessages
+            ) {
+              void loadOlderMessages();
+            }
+          }}
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain bg-[#fafaff] px-3 py-3 sm:px-5 sm:py-4"
         >
-          {loading ? (
-            <div className="m-auto w-full max-w-sm space-y-3">
-              <div className="h-12 animate-pulse rounded-2xl bg-slate-100" />
-              <div className="ml-auto h-16 w-3/4 animate-pulse rounded-2xl bg-violet-100" />
+          {loadingOlderMessages && (
+            <div className="flex shrink-0 items-center justify-center gap-2 py-1 text-xs text-slate-500" role="status">
+              <LoaderCircle className="animate-spin text-[#2501FF]" size={15} />
+              Loading earlier messages…
+            </div>
+          )}
+          {messagesLoading ? (
+            <div className="m-auto flex items-center gap-2 text-sm text-slate-500" role="status" aria-live="polite">
+              <LoaderCircle className="animate-spin text-[#2501FF]" size={20} />
+              Loading messages…
+            </div>
+          ) : messagesError ? (
+            <div className="m-auto max-w-sm px-4 py-8 text-center" role="alert">
+              <p className="text-sm text-slate-600">{messagesError}</p>
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                className="mt-3 min-h-11 rounded-full bg-[#2501FF] px-5 py-2 text-sm font-semibold text-white"
+              >
+                Try again
+              </button>
             </div>
           ) : messages.length ? (
             messages.map((message) => {
@@ -369,15 +361,15 @@ export default function StudentChat() {
               return (
                 <div
                   key={message.id}
-                  className={`flex max-w-[94%] items-end gap-2 sm:max-w-[82%] ${isMine ? "ml-auto flex-row-reverse" : "mr-auto"}`}
+                  className={`flex max-w-[92%] items-end gap-1.5 sm:max-w-[82%] sm:gap-2 ${isMine ? "ml-auto flex-row-reverse" : "mr-auto"}`}
                 >
                   <UserAvatar
                     image={isMine ? user?.image : message.sender_image}
                     name={isMine ? user?.name : message.sender_name}
-                    className="size-8 shrink-0"
+                    className="size-7 shrink-0 sm:size-8"
                   />
-                  <article className={`min-w-0 rounded-2xl px-4 py-3 ${isMine ? "rounded-br-md bg-[#2501FF] text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-800"}`}>
-                    <p className="whitespace-pre-wrap break-words text-sm leading-6">
+                  <article className={`min-w-0 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 ${isMine ? "rounded-br-md bg-[#2501FF] text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-800"}`}>
+                    <p className="whitespace-pre-wrap break-words text-[13px] leading-5 sm:text-sm sm:leading-6">
                       {message.body}
                     </p>
                     <p className={`mt-2 text-right text-[10px] ${isMine ? "text-white/65" : "text-slate-400"}`}>
@@ -393,11 +385,11 @@ export default function StudentChat() {
               );
             })
           ) : (
-            <div className="m-auto max-w-sm px-4 text-center">
-              <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-white text-[#2501FF] shadow-sm">
+            <div className="m-auto max-w-sm px-4 py-8 text-center">
+              <span className="mx-auto grid size-11 place-items-center rounded-2xl bg-white text-[#2501FF] shadow-sm">
                 <MessageCircle size={22} />
               </span>
-              <h2 className="mt-4 text-base font-bold text-slate-900">
+              <h2 className="mt-3 text-base font-bold text-slate-900">
                 Start a conversation
               </h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">
@@ -415,7 +407,7 @@ export default function StudentChat() {
 
         <form
           onSubmit={send}
-          className="flex items-end gap-3 border-t border-slate-100 bg-white p-3 sm:p-5"
+          className="flex shrink-0 items-end gap-2 border-t border-slate-100 bg-white p-2.5 sm:gap-3 sm:p-4"
         >
           <label className="sr-only" htmlFor="adviser-chat-message">
             Write a message to your adviser
@@ -425,14 +417,14 @@ export default function StudentChat() {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             maxLength={5000}
-            rows={2}
+            rows={1}
             placeholder={
               user?.department_id && user?.session
                 ? "Write a message…"
                 : "Complete your academic profile to contact an adviser"
             }
             disabled={!conversation || !user?.department_id || !user?.session}
-            className="max-h-36 min-h-12 flex-1 resize-y rounded-xl border border-[#E9E5FF] px-3.5 py-3 text-sm leading-5 outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10 disabled:bg-slate-50"
+            className="max-h-28 min-h-11 flex-1 resize-y rounded-xl border border-[#E9E5FF] px-3 py-2.5 text-sm leading-5 outline-none placeholder:text-slate-400 focus:border-[#2501FF] focus:ring-2 focus:ring-[#2501FF]/10 disabled:bg-slate-50 sm:max-h-36 sm:px-3.5 sm:py-3"
           />
           <PrimaryButton
             type="submit"
@@ -443,6 +435,8 @@ export default function StudentChat() {
               !user?.department_id ||
               !user?.session
             }
+            aria-label={sending ? "Sending message" : "Send message"}
+            className="size-11 shrink-0 rounded-xl px-0 sm:w-auto sm:px-4"
           >
             <span className="hidden sm:inline">
               {sending ? "Sending…" : "Send"}
@@ -450,15 +444,39 @@ export default function StudentChat() {
             <Send size={16} />
           </PrimaryButton>
         </form>
-              </>
-            ) : (
-              <div className="grid flex-1 place-items-center p-8 text-center text-sm text-slate-400">
-                Choose a conversation to start chatting.
-              </div>
-            )}
-          </section>
-        </div>
+        </>
+        ) : (
+          <div className="grid flex-1 place-items-center p-6 text-center">
+            <div>
+              <MessageCircle size={24} className="mx-auto text-slate-300" />
+              <p className="mt-3 text-sm font-semibold text-slate-700">Your adviser chat is unavailable</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setError("");
+                  setLoading(true);
+                  fetchChatConversations()
+                    .then(async (response) => {
+                      const existing = response.data.find((item) => item.type === "lecturer");
+                      setConversation(existing ?? (await createAdviserConversation()).data);
+                    })
+                    .catch((openError: unknown) => {
+                      setError(
+                        openError instanceof ApiError || openError instanceof Error
+                          ? openError.message
+                          : "Your adviser chat could not be opened.",
+                      );
+                    })
+                    .finally(() => setLoading(false));
+                }}
+                className="mt-3 min-h-11 rounded-full bg-[#2501FF] px-5 py-2 text-sm font-semibold text-white"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        )}
       </Card>
-    </>
+    </div>
   );
 }
