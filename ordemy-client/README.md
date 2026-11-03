@@ -64,9 +64,11 @@ On the **Class reps** page, lecturers review pending applications and see approv
 
 ## Adviser AI
 
-The **AI review** page lists generated question groups and drafts. Each group stays review-only unless the lecturer chooses **Reply to questions like this in future** and approves the reply text. Scheduled runs compare new question groups with the saved examples and automatically answer only groups the AI identifies as the same issue, using the approved reply. The lecturer can update or cancel each group’s rule. AI replies are labeled and students receive normal chat notifications.
+The **AI review** page lists generated question groups and drafts. Each group stays review-only unless the lecturer chooses **Reply to questions like this in future** and approves the reply text. Scheduled runs compare new question groups with the saved examples and automatically answer only groups the AI identifies as the same issue, using the approved reply. The lecturer can update or cancel each group’s rule. Replies are sent as written, without an AI-assistance label, and students receive normal chat notifications.
 
 The scheduler runs hourly between 12:00 and 17:00 Africa/Lagos when `GROQ_API_KEY` is configured on the API. An adviser needs to be verified, assigned to a department and cohort, and have recent questions linked to their lecturer chat. AI run notifications appear in the adviser workspace and AI review page. Since similarity is determined by the AI model, only save replies that are appropriate to send automatically if a future question is judged to match.
+
+Student and adviser chat screens show one-to-one adviser conversations, not class-group conversations. Every student message sent in adviser chat is saved to **Questions** and the adviser's question inbox for bulk grouping and replies. Groq chooses a subject and type, including for messages in Nigerian Pidgin and code-switching; if AI classification is unavailable, the message is still saved as **Other**.
 
 To try this flow, use the test-only SQL seed and sample accounts documented in the [API README](../ordemy-api/README.md#testing-courses-class-rep-revocation-and-ai-grouping). Never run test seed data against production.
 

@@ -199,19 +199,6 @@ export const fetchAdviserConversations = () =>
     cache: "no-store",
   });
 
-export const fetchClassSessions = () =>
-  apiRequest<{ data: string[] }>("/api/chat/class-sessions", {
-    token: getToken(),
-    cache: "no-store",
-  });
-
-export const createAdviserClassChat = (session: string) =>
-  apiRequest<{ data: ChatConversation }>("/api/chat/conversations", {
-    method: "POST",
-    token: getToken(),
-    body: { type: "class", session },
-  });
-
 export const fetchAdviserMessages = (conversationId: string) =>
   apiRequest<{ data: ChatMessage[] }>(
     `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`,

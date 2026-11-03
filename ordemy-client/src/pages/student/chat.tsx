@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDown, ArrowLeft, MessageCircle, RefreshCw, Send, UsersRound } from "lucide-react";
+import { ArrowDown, ArrowLeft, MessageCircle, RefreshCw, Send } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { notifyChatRead } from "../../hooks/use-chat-unread-count";
 import { ApiError } from "../../lib/api";
@@ -9,7 +9,6 @@ import type { ChatConversation, ChatMessage } from "../../utils/types";
 import { UserAvatar } from "../../components/user-avatar";
 import {
   createAdviserConversation,
-  createStudentClassConversation,
   fetchChatConversations,
   fetchConversationMessages,
   markConversationRead,
@@ -27,6 +26,7 @@ export default function StudentChat() {
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
+  const [analysisNotice, setAnalysisNotice] = useState("");
   const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
   const scrollContainer = useRef<HTMLDivElement>(null);
   const socketRef = useRef<ReturnType<typeof connectChatSocket> | null>(null);
@@ -45,9 +45,6 @@ export default function StudentChat() {
     setMessages(response.data);
     await markRead(conversationId);
   }, [markRead]);
-
-  const classConversation = conversations.find((item) => item.type === "class");
-  const adviserConversation = conversations.find((item) => item.type === "lecturer");
 
   useEffect(() => {
     if (!conversationId) return;
@@ -120,44 +117,13 @@ export default function StudentChat() {
     async function initialize() {
       try {
         const response = await fetchChatConversations();
-        const existingClass = response.data.find((item) => item.type === "class");
-        const existingAdviser = response.data.find((item) => item.type === "lecturer");
-        const [classResult, adviserResult] = await Promise.allSettled([
-          existingClass
-            ? Promise.resolve(existingClass)
-            : createStudentClassConversation().then((result) => result.data),
-          existingAdviser
-            ? Promise.resolve(existingAdviser)
-            : createAdviserConversation().then((result) => result.data),
-        ]);
-        if (!active) return;
-        const available = [
-          ...(classResult.status === "fulfilled" ? [classResult.value] : []),
-          ...(adviserResult.status === "fulfilled" ? [adviserResult.value] : []),
-        ];
-        setConversations(available);
-        setConversation(available[0] ?? null);
-        if (available.length === 0) {
-          const failure = classResult.status === "rejected"
-            ? classResult.reason
-            : adviserResult.status === "rejected"
-              ? adviserResult.reason
-              : null;
-          if (failure) {
-            setError(
-              failure instanceof ApiError || failure instanceof Error
-                ? failure.message
-                : "Your chats could not be opened.",
-            );
-          }
-        } else if (classResult.status === "rejected" || adviserResult.status === "rejected") {
-          const failure = classResult.status === "rejected" ? classResult.reason : adviserResult.status === "rejected" ? adviserResult.reason : null;
-          setError(
-            failure instanceof ApiError || failure instanceof Error
-              ? failure.message
-              : "One of your chats could not be opened.",
-          );
+        let adviserConversation = response.data.find((item) => item.type === "lecturer");
+        if (!adviserConversation) {
+          adviserConversation = (await createAdviserConversation()).data;
         }
+        if (!active) return;
+        setConversations([adviserConversation]);
+        setConversation(adviserConversation);
       } catch (loadError: unknown) {
         if (active) {
           setError(
@@ -228,9 +194,17 @@ export default function StudentChat() {
     if (!conversation || !draft.trim()) return;
     setSending(true);
     setError("");
+    setAnalysisNotice("");
+    const showQuestionAnalysis = (message: ChatMessage) => {
+      if (message.question_analysis_status === "saved_with_default_type") {
+        setAnalysisNotice("Message saved as an Other question and shared in this chat.");
+      } else if (message.question_analysis_status === "saved" && message.question_type) {
+        setAnalysisNotice(`Saved as a ${message.question_type} question and shared in this chat.`);
+      }
+    };
     const socket = socketRef.current;
     if (socket?.connected) {
-      socket.timeout(10_000).emit(
+      socket.timeout(30_000).emit(
         "chat:message",
         { conversationId: conversation.id, body: draft.trim() },
         (
@@ -252,6 +226,7 @@ export default function StudentChat() {
               ? current
               : [...current, message],
           );
+          showQuestionAnalysis(message);
           setDraft("");
         },
       );
@@ -264,6 +239,7 @@ export default function StudentChat() {
           ? current
           : [...current, response.data],
       );
+      showQuestionAnalysis(response.data);
       await markRead(conversation.id);
       setDraft("");
     } catch (sendError) {
@@ -280,10 +256,15 @@ export default function StudentChat() {
   return (
     <>
       {error && <Notice onDismiss={() => setError("")}>{error}</Notice>}
+      {analysisNotice && (
+        <Notice tone="success" onDismiss={() => setAnalysisNotice("")}>
+          {analysisNotice}
+        </Notice>
+      )}
       <PageIntro
         eyebrow="Department community"
-        title="Chats"
-        description="Talk with your adviser or join the group chat for your department and academic session."
+        title="Adviser chat"
+        description="Every message you send to your adviser is saved as a question for their inbox. The type is selected automatically, including for messages written in Pidgin."
         action={
           <button
             type="button"
@@ -301,7 +282,7 @@ export default function StudentChat() {
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4">
               <div>
                 <p className="text-sm font-bold text-slate-900">Your chats</p>
-                <p className="mt-0.5 text-[11px] text-slate-400">Adviser and class group</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">Private adviser conversation</p>
               </div>
               <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold ${connected ? "text-emerald-700" : "text-slate-400"}`}>
                 <span className={`size-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-400"}`} />
@@ -312,10 +293,7 @@ export default function StudentChat() {
               {loading ? (
                 <p className="p-3 text-xs text-slate-400">Loading conversations…</p>
               ) : (
-                [
-                  { item: classConversation, title: "Class group", preview: classConversation?.last_message },
-                  { item: adviserConversation, title: "Adviser chat", preview: adviserConversation?.last_message },
-                ].map(({ item, title, preview }) => item && (
+                conversations.map((item) => (
                   <button
                     type="button"
                     key={item.id}
@@ -331,12 +309,12 @@ export default function StudentChat() {
                     }`}
                   >
                     <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#2501FF]/[0.08] text-[#2501FF]">
-                      {item.type === "class" ? <UsersRound size={19} /> : <MessageCircle size={19} />}
+                      <MessageCircle size={19} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-bold text-slate-900">{title}</span>
+                      <span className="block truncate text-sm font-bold text-slate-900">Adviser chat</span>
                       <span className="mt-1 block truncate text-xs text-slate-500">
-                        {preview || (item.type === "class" ? `${item.class_department ?? user?.department ?? "Department"} · ${item.class_session ?? user?.session ?? ""}` : `${item.lecturer_name ?? "Department adviser"}`)}
+                        {item.last_message ?? `${item.lecturer_name ?? "Department adviser"}`}
                       </span>
                     </span>
                     {Number(item.unread_count) > 0 && (
@@ -362,23 +340,11 @@ export default function StudentChat() {
                   >
                     <ArrowLeft size={18} />
                   </button>
-                  {conversation.type === "lecturer" ? (
-                    <UserAvatar image={conversation.lecturer_image} name={conversation.lecturer_name} className="size-10" />
-                  ) : (
-                    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#2501FF]/[0.08] text-[#2501FF]">
-                      <UsersRound size={19} />
-                    </span>
-                  )}
+                  <UserAvatar image={conversation.lecturer_image} name={conversation.lecturer_name} className="size-10" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-slate-900">
-                      {conversation.type === "class"
-                        ? `Class group · ${conversation.class_session ?? user?.session ?? ""}`
-                        : conversation.lecturer_name ?? "Department adviser"}
-                    </p>
+                    <p className="truncate text-sm font-bold text-slate-900">{conversation.lecturer_name ?? "Department adviser"}</p>
                     <p className="mt-0.5 truncate text-xs text-slate-500">
-                      {conversation.type === "class"
-                        ? `${conversation.class_department ?? user?.department ?? "Your department"} student cohort`
-                        : `${user?.department ?? "Your department"} · replies appear here`}
+                      {user?.department ?? "Your department"} · replies appear here
                     </p>
                   </div>
                   <span className={`hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold sm:inline-flex ${connected ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
@@ -410,14 +376,6 @@ export default function StudentChat() {
                     className="size-8 shrink-0"
                   />
                   <article className={`min-w-0 rounded-2xl px-4 py-3 ${isMine ? "rounded-br-md bg-[#2501FF] text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-800"}`}>
-                    {!isMine && conversation?.type === "class" && (
-                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                        <p className="text-[10px] font-bold text-[#2501FF]">{message.sender_name}</p>
-                        {Boolean(message.sender_is_class_rep) && (
-                          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">Class rep</span>
-                        )}
-                      </div>
-                    )}
                     <p className="whitespace-pre-wrap break-words text-sm leading-6">
                       {message.body}
                     </p>
@@ -442,9 +400,7 @@ export default function StudentChat() {
                 Start a conversation
               </h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                {conversation?.type === "class"
-                  ? "Start a conversation with students and your adviser in this class group."
-                  : "Send your adviser a message. Questions you submit on the Questions page will also appear in this chat."}
+                Send your adviser a message. Every message is added to their question inbox and categorized automatically.
               </p>
               <Link
                 to="/dashboard/student/questions"
@@ -461,9 +417,7 @@ export default function StudentChat() {
           className="flex items-end gap-3 border-t border-slate-100 bg-white p-3 sm:p-5"
         >
           <label className="sr-only" htmlFor="adviser-chat-message">
-            {conversation?.type === "class"
-              ? "Write a message to your class group"
-              : "Write a message to your adviser"}
+            Write a message to your adviser
           </label>
           <textarea
             id="adviser-chat-message"

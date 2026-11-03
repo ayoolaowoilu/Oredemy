@@ -175,6 +175,8 @@ export interface ChatMessage {
     body: string;
     created_at: string;
     sender_is_class_rep?: boolean | number;
+    question_analysis_status?: "saved" | "saved_with_default_type";
+    question_type?: "Results" | "Facilities" | "Timetable" | "Other";
 }
 
 export interface ChatSocketResult<T> {

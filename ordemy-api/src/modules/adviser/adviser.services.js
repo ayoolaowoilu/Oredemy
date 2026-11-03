@@ -424,7 +424,7 @@ export async function SendAiGroup(
                     conversation.id,
                     lecturerId,
                     automated
-                        ? `[AI-assisted automatic response]\n\n${group.reply_text}`
+                        ? group.reply_text
                         : group.draft_reply,
                 ]
             );

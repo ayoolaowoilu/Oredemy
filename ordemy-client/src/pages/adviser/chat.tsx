@@ -3,10 +3,8 @@ import {
   ArrowLeft,
   MessageCircle,
   MessageSquareText,
-  Plus,
   RefreshCw,
   Send,
-  UsersRound,
 } from "lucide-react";
 import { ApiError } from "../../lib/api";
 import { notifyChatRead } from "../../hooks/use-chat-unread-count";
@@ -15,10 +13,8 @@ import type { ChatConversation, ChatMessage } from "../../utils/types";
 import { UserAvatar } from "../../components/user-avatar";
 import {
   connectAdviserSocket,
-  createAdviserClassChat,
   fetchAdviserConversations,
   fetchAdviserMessages,
-  fetchClassSessions,
   markAdviserConversationRead,
   sendAdviserMessage,
 } from "./api";
@@ -38,15 +34,11 @@ export default function AdviserChat() {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [selected, setSelected] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [sessions, setSessions] = useState<string[]>([]);
-  const [session, setSession] = useState("");
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
   const socketRef = useRef<ReturnType<typeof connectAdviserSocket> | null>(null);
   const scrollContainer = useRef<HTMLDivElement>(null);
@@ -67,15 +59,13 @@ export default function AdviserChat() {
     let active = true;
     async function initialize() {
       try {
-        const [conversationResponse, sessionResponse] = await Promise.all([
-          fetchAdviserConversations(),
-          fetchClassSessions(),
-        ]);
+        const conversationResponse = await fetchAdviserConversations();
         if (!active) return;
-        setConversations(conversationResponse.data);
-        setSelected(conversationResponse.data[0] ?? null);
-        setSessions(sessionResponse.data);
-        setSession(sessionResponse.data[0] ?? "");
+        const directConversations = conversationResponse.data.filter(
+          (conversation) => conversation.type === "lecturer",
+        );
+        setConversations(directConversations);
+        setSelected(directConversations[0] ?? null);
       } catch (loadError: unknown) {
         if (active) {
           setError(
@@ -222,31 +212,6 @@ export default function AdviserChat() {
     }
   }, [messages.length]);
 
-  async function createGroup() {
-    if (!session) return;
-    setCreating(true);
-    setError("");
-    try {
-      const response = await createAdviserClassChat(session);
-      setConversations((current) => [
-        response.data,
-        ...current.filter((item) => item.id !== response.data.id),
-      ]);
-      setMessages([]);
-      setSelected(response.data);
-      setMobileConversationOpen(true);
-      setNotice(`Class group chat opened for ${session}.`);
-    } catch (createError: unknown) {
-      setError(
-        createError instanceof ApiError || createError instanceof Error
-          ? createError.message
-          : "Could not open the class group chat.",
-      );
-    } finally {
-      setCreating(false);
-    }
-  }
-
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const socket = socketRef.current;
@@ -333,36 +298,9 @@ export default function AdviserChat() {
       <AdviserPageIntro
         eyebrow="Real-time support"
         title="Adviser chats"
-        description="Message students one-to-one or open a department class group. Messages update live with Socket.IO."
+        description="Message students one-to-one. Messages update live with Socket.IO."
       />
       {error && <AdviserNotice dismiss={() => setError("")}>{error}</AdviserNotice>}
-      {notice && <AdviserNotice tone="success" dismiss={() => setNotice("")}>{notice}</AdviserNotice>}
-      <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-[#F0ECFF] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm font-bold text-slate-900">Department group chat</p>
-          <p className="mt-1 text-xs text-slate-500">Choose a student session to create or open its group.</p>
-        </div>
-        <div className="flex gap-2">
-          <select
-            value={session}
-            onChange={(event) => setSession(event.target.value)}
-            disabled={!sessions.length}
-            className="min-w-36 rounded-xl border border-[#E9E5FF] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#2501FF]/50"
-          >
-            {sessions.length ? sessions.map((item) => (
-              <option key={item} value={item}>{item}</option>
-            )) : <option value="">No student sessions</option>}
-          </select>
-          <button
-            type="button"
-            onClick={() => void createGroup()}
-            disabled={!session || creating}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#2501FF] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#1d00d6] disabled:opacity-50"
-          >
-            <Plus size={15} /> {creating ? "Opening…" : "Open group"}
-          </button>
-        </div>
-      </div>
 
       <AdviserCard className="overflow-hidden p-0">
         <div className="grid h-[min(72vh,700px)] min-h-[500px] md:grid-cols-[300px_minmax(0,1fr)]">
@@ -370,7 +308,7 @@ export default function AdviserChat() {
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4">
               <div>
                 <p className="text-sm font-bold text-slate-900">Conversations</p>
-                <p className="mt-0.5 text-[11px] text-slate-400">Students and class groups</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">One-to-one student chats</p>
               </div>
               <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold ${connected ? "text-emerald-700" : "text-amber-700"}`}>
                 <span className={`size-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
@@ -391,21 +329,13 @@ export default function AdviserChat() {
                   }}
                   className={`mb-1 flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors ${selected?.id === item.id ? "bg-[#2501FF]/[0.07]" : "hover:bg-slate-50"}`}
                 >
-                  {item.type === "class" ? (
-                    <span className="grid size-11 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-700">
-                        <UsersRound size={16} />
-                    </span>
-                  ) : (
-                    <UserAvatar image={item.student_image} name={item.student_name} className="size-11 shrink-0 text-sm" />
-                  )}
+                  <UserAvatar image={item.student_image} name={item.student_name} className="size-11 shrink-0 text-sm" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-bold text-slate-900">
-                      {item.type === "class"
-                        ? `${item.class_department ?? "Department"} · ${item.class_session ?? "Class"}`
-                        : item.student_name ?? "Student conversation"}
+                      {item.student_name ?? "Student conversation"}
                     </span>
                     <span className="mt-1 block truncate text-xs text-slate-500">
-                      {item.last_message ?? (item.type === "class" ? "Department group" : "Direct chat")}
+                      {item.last_message ?? "Direct chat"}
                     </span>
                   </span>
                   {Number(item.unread_count) > 0 && (
@@ -435,21 +365,13 @@ export default function AdviserChat() {
                   >
                     <ArrowLeft size={18} />
                   </button>
-                  {selected.type === "class" ? (
-                    <span className="grid size-10 place-items-center rounded-full bg-violet-50 text-violet-700">
-                      <UsersRound size={18} />
-                    </span>
-                  ) : (
-                    <UserAvatar image={selected.student_image} name={selected.student_name} className="size-10" />
-                  )}
+                  <UserAvatar image={selected.student_image} name={selected.student_name} className="size-10" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-slate-900">
-                      {selected.type === "class"
-                        ? `${selected.class_department ?? "Department"} · ${selected.class_session ?? "Class"}`
-                        : selected.student_name ?? "Student"}
+                      {selected.student_name ?? "Student"}
                     </p>
                     <p className="mt-0.5 truncate text-xs text-slate-500">
-                      {selected.type === "class" ? "Department group conversation" : "One-to-one adviser conversation"}
+                      One-to-one adviser conversation
                     </p>
                   </div>
                   <button
@@ -519,7 +441,7 @@ export default function AdviserChat() {
               <div className="m-auto p-8 text-center">
                 <MessageCircle size={26} className="mx-auto text-slate-300" />
                 <h2 className="mt-3 font-bold text-slate-900">Select a conversation</h2>
-                <p className="mt-1 text-sm text-slate-500">Student chats and class groups will appear here.</p>
+                <p className="mt-1 text-sm text-slate-500">One-to-one student conversations will appear here.</p>
               </div>
             )}
           </div>
