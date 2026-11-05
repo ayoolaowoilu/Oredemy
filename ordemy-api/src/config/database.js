@@ -2,6 +2,11 @@ import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 dotenv.config();
 
+const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT ?? 10);
+if (!Number.isInteger(connectionLimit) || connectionLimit < 1 || connectionLimit > 100) {
+  throw new Error("DB_CONNECTION_LIMIT must be an integer between 1 and 100");
+}
+
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -9,7 +14,7 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   port: Number(process.env.DB_PORT) || 3306,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit,
   queueLimit: 0,
 });
 

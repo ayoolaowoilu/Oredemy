@@ -18,6 +18,7 @@ import {
 } from "../../utils/level";
 import { compressProfileImage } from "../../utils/compress-image";
 import { UserAvatar } from "../../components/user-avatar";
+import { BrowserPushSetting } from "../../components/browser-push-setting";
 import {
   EditRequest,
   FetchAcademicStructure,
@@ -132,21 +133,19 @@ export default function StudentSettings() {
     setDepartmentId(null);
   }
 
-  function toggleNotification(key: NotificationKey) {
-    setNotifications((current) => {
-      const next = { ...current, [key]: !current[key] };
-      if (user?.id) {
-        try {
-          localStorage.setItem(
-            `ordemy:notifications:${user.id}`,
-            JSON.stringify(next),
-          );
-        } catch {
-          // Preference still applies for this session.
-        }
+  function persistNotificationPreferences(next: Record<NotificationKey, boolean>) {
+    setNotifications(next);
+    if (user?.id) {
+      try {
+        localStorage.setItem(`ordemy:notifications:${user.id}`, JSON.stringify(next));
+      } catch {
+        setError("Notification preferences could not be saved on this device.");
       }
-      return next;
-    });
+    }
+  }
+
+  function toggleNotification(key: NotificationKey) {
+    persistNotificationPreferences({ ...notifications, [key]: !notifications[key] });
   }
 
   async function saveName(event: FormEvent<HTMLFormElement>) {
@@ -468,6 +467,7 @@ export default function StudentSettings() {
           <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400">
             <ShieldCheck size={13} /> Preferences are saved on this device.
           </p>
+          <BrowserPushSetting userId={user?.id} />
         </Card>
 
         <Card>

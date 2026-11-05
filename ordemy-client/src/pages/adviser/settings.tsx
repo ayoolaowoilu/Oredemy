@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { ImageUp, Save, UserRound } from "lucide-react";
 import { UserAvatar } from "../../components/user-avatar";
+import { BrowserPushSetting } from "../../components/browser-push-setting";
 import { useAuth } from "../../context/useAuth";
 import { ApiError, tokenStorage } from "../../lib/api";
 import { compressProfileImage } from "../../utils/compress-image";
@@ -98,6 +99,11 @@ export default function AdviserSettings() {
               <h2 className="font-bold text-slate-950">Personal details</h2>
               <p className="text-sm text-slate-500">The details students see.</p>
             </div>
+            <AdviserCard className="mt-5">
+              <h2 className="font-bold text-slate-950">Notifications</h2>
+              <p className="mt-1 text-sm text-slate-500">Choose where you receive direct chat alerts.</p>
+              <BrowserPushSetting userId={user?.id} />
+            </AdviserCard>
           </div>
           <div className="mt-5 flex items-center gap-4 rounded-2xl bg-slate-50 p-4">
             <UserAvatar image={user?.image} name={user?.name} className="size-14" />

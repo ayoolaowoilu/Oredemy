@@ -11,13 +11,16 @@ import { notifyChatRead } from "../../hooks/use-chat-unread-count";
 import { useAuth } from "../../context/useAuth";
 import type { ChatConversation, ChatMessage } from "../../utils/types";
 import { UserAvatar } from "../../components/user-avatar";
+import { ChatMessageControls } from "../../components/chat-message-controls";
 import { SkeletonList } from "../../components/loading-states";
 import {
   connectAdviserSocket,
+  disconnectAdviserSocket,
   fetchAdviserConversations,
   fetchAdviserMessages,
   markAdviserConversationRead,
   sendAdviserMessage,
+  toggleAdviserMessageReaction,
 } from "./api";
 import { AdviserCard, AdviserNotice, AdviserPageIntro } from "./shared";
 
@@ -36,7 +39,10 @@ export default function AdviserChat() {
   const [selected, setSelected] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
+  const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
@@ -66,6 +72,7 @@ export default function AdviserChat() {
           (conversation) => conversation.type === "lecturer",
         );
         setConversations(directConversations);
+        setNextConversationCursor(conversationResponse.next_cursor);
         setSelected(directConversations[0] ?? null);
       } catch (loadError: unknown) {
         if (active) {
@@ -84,6 +91,30 @@ export default function AdviserChat() {
       active = false;
     };
   }, [user?.id]);
+
+  async function loadMoreConversations() {
+    if (!nextConversationCursor || loadingMoreConversations) return;
+    setLoadingMoreConversations(true);
+    try {
+      const response = await fetchAdviserConversations(nextConversationCursor);
+      setConversations((current) => {
+        const byId = new Map(current.map((item) => [item.id, item]));
+        for (const item of response.data) {
+          if (item.type === "lecturer") byId.set(item.id, item);
+        }
+        return [...byId.values()];
+      });
+      setNextConversationCursor(response.next_cursor);
+    } catch (loadError: unknown) {
+      setError(
+        loadError instanceof ApiError || loadError instanceof Error
+          ? loadError.message
+          : "Could not load more conversations.",
+      );
+    } finally {
+      setLoadingMoreConversations(false);
+    }
+  }
 
   useEffect(() => {
     const socket = connectAdviserSocket();
@@ -121,6 +152,13 @@ export default function AdviserChat() {
         });
       }
     };
+    const onReaction = (reaction: { id: number; reactions: NonNullable<ChatMessage["reactions"]> }) => {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === reaction.id ? { ...message, reactions: reaction.reactions } : message,
+        ),
+      );
+    };
     const onNotification = (message: ChatMessage) => {
       if (message.sender_id === user?.id) return;
       const isVisibleConversation =
@@ -149,13 +187,15 @@ export default function AdviserChat() {
     socket.on("connect_error", onConnectError);
     socket.on("chat:message", onMessage);
     socket.on("chat:notification", onNotification);
+    socket.on("chat:reaction", onReaction);
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("connect_error", onConnectError);
       socket.off("chat:message", onMessage);
       socket.off("chat:notification", onNotification);
-      socket.disconnect();
+      socket.off("chat:reaction", onReaction);
+      disconnectAdviserSocket(socket);
       socketRef.current = null;
     };
   }, [user?.id]);
@@ -222,7 +262,7 @@ export default function AdviserChat() {
     if (socket?.connected) {
       socket.timeout(10_000).emit(
         "chat:message",
-        { conversationId: selected.id, body: draft.trim() },
+        { conversationId: selected.id, body: draft.trim(), replyToId: replyTarget?.id },
         (
           timeoutError: Error | null,
           result?: { ok: boolean; data?: ChatMessage; error?: { message: string } },
@@ -243,13 +283,14 @@ export default function AdviserChat() {
               : [...current, message],
           );
           setDraft("");
+          setReplyTarget(null);
         },
       );
       return;
     }
 
     try {
-      const response = await sendAdviserMessage(selected.id, draft.trim());
+      const response = await sendAdviserMessage(selected.id, draft.trim(), replyTarget?.id);
       setMessages((current) =>
         current.some((item) => item.id === response.data.id)
           ? current
@@ -268,6 +309,7 @@ export default function AdviserChat() {
         ),
       );
       setDraft("");
+      setReplyTarget(null);
     } catch (sendError: unknown) {
       setError(
         sendError instanceof ApiError || sendError instanceof Error
@@ -276,6 +318,20 @@ export default function AdviserChat() {
       );
     } finally {
       setSending(false);
+    }
+  }
+
+  async function react(message: ChatMessage, emoji: string) {
+    if (!selected) return;
+    try {
+      const response = await toggleAdviserMessageReaction(selected.id, message.id, emoji);
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id ? { ...item, reactions: response.data.reactions } : item,
+        ),
+      );
+    } catch (reactionError: unknown) {
+      setError(reactionError instanceof Error ? reactionError.message : "Reaction could not be saved.");
     }
   }
 
@@ -304,7 +360,7 @@ export default function AdviserChat() {
       {error && <AdviserNotice dismiss={() => setError("")}>{error}</AdviserNotice>}
 
       <AdviserCard className="overflow-hidden p-0">
-        <div className="grid h-[min(72vh,700px)] min-h-[500px] md:grid-cols-[300px_minmax(0,1fr)]">
+        <div className="grid h-[min(72vh,700px)] min-h-[min(500px,calc(100dvh-180px))] md:grid-cols-[300px_minmax(0,1fr)]">
           <aside className={`${mobileConversationOpen ? "hidden" : "flex"} min-h-0 flex-col border-b border-slate-200 md:flex md:border-b-0 md:border-r`}>
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4">
               <div>
@@ -319,7 +375,9 @@ export default function AdviserChat() {
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
               {loading ? (
                 <SkeletonList rows={3} />
-              ) : conversations.length ? conversations.map((item) => (
+              ) : conversations.length ? (
+                <>
+                {conversations.map((item) => (
                 <button
                   type="button"
                   key={item.id}
@@ -345,7 +403,19 @@ export default function AdviserChat() {
                     </span>
                   )}
                 </button>
-              )) : (
+                ))}
+                {nextConversationCursor && (
+                  <button
+                    type="button"
+                    onClick={() => void loadMoreConversations()}
+                    disabled={loadingMoreConversations}
+                    className="my-2 min-h-10 w-full rounded-lg text-xs font-semibold text-[#2501FF] hover:bg-[#F7F5FF] disabled:opacity-50"
+                  >
+                    {loadingMoreConversations ? "Loading…" : "Load older conversations"}
+                  </button>
+                )}
+                </>
+              ) : (
                 <div className="px-3 py-5 text-center lg:py-10">
                   <MessageSquareText className="mx-auto text-slate-300" size={22} />
                   <p className="mt-2 text-xs text-slate-500">No conversations yet.</p>
@@ -405,7 +475,12 @@ export default function AdviserChat() {
                               )}
                             </div>
                           )}
-                          <p className="whitespace-pre-wrap break-words text-sm leading-6">{message.body}</p>
+                          <p className="whitespace-pre-wrap break-words text-xs leading-[1.15rem] sm:text-sm sm:leading-6">{message.body}</p>
+                          <ChatMessageControls
+                            message={message}
+                            onReply={setReplyTarget}
+                            onReact={(item, emoji) => void react(item, emoji)}
+                          />
                           <p className={`mt-2 text-right text-[10px] ${isMine ? "text-white/65" : "text-slate-400"}`}>
                             {showTime(message.created_at)}
                           </p>
@@ -419,7 +494,18 @@ export default function AdviserChat() {
                     </div>
                   )}
                 </div>
-                <form onSubmit={sendMessage} className="flex gap-2 border-t border-slate-100 p-3 sm:p-4">
+                <form onSubmit={sendMessage} className="flex flex-col gap-2 border-t border-slate-100 p-3 sm:p-4">
+                  {replyTarget && (
+                    <div className="flex items-center gap-2 rounded-lg bg-[#F7F5FF] px-3 py-2 text-[11px] text-slate-600">
+                      <span className="min-w-0 flex-1 truncate">
+                        Replying to <b>{replyTarget.sender_name}</b>: {replyTarget.body}
+                      </span>
+                      <button type="button" onClick={() => setReplyTarget(null)} className="font-bold text-[#2501FF]">
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
                   <input
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
@@ -436,6 +522,7 @@ export default function AdviserChat() {
                   >
                     <Send size={16} />
                   </button>
+                  </div>
                 </form>
               </>
             ) : (

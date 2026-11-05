@@ -24,17 +24,11 @@ export function publishChatMessage(message) {
 
         let recipientIds;
         if (conversation.type === "class") {
-            const [users] = await pool.query(
-                `SELECT id
-                 FROM users
-                 WHERE department_id = ? AND session = ?
-                   AND (
-                       role = 'student'
-                       OR (role = 'lecturer' AND is_verified = TRUE)
-                   )`,
-                [conversation.class_department_id, conversation.class_session]
-            );
-            recipientIds = users.map(({ id }) => id);
+            socketServer
+                .to(cohortRoom(conversation.class_department_id, conversation.class_session))
+                .except(userRoom(message.sender_id))
+                .emit("chat:notification", message);
+            return;
         } else if (conversation.type === "support") {
             const [users] = await pool.query(
                 "SELECT id FROM users WHERE role = 'admin' OR id = ?",
@@ -45,6 +39,13 @@ export function publishChatMessage(message) {
             recipientIds = [conversation.student_id, conversation.lecturer_id].filter(Boolean);
         }
 
+        void publishPushNotifications(
+            recipientIds.filter((userId) => userId !== message.sender_id),
+            message,
+            conversation.type
+        ).catch((error) => {
+            console.error("[chat] Could not publish browser push notification:", error);
+        });
         const recipientRooms = recipientIds
             .filter((userId) => userId !== message.sender_id)
             .map(userRoom);
@@ -54,9 +55,28 @@ export function publishChatMessage(message) {
     })();
 }
 
+async function publishPushNotifications(userIds, message, conversationType) {
+    if (!userIds.length) return;
+    const { SendPushNotification } = await import("../notifications/notifications.services.js");
+    await Promise.all(userIds.map((userId) =>
+        SendPushNotification(userId, {
+            title: message.sender_name || "New message",
+            body: message.body,
+            url: conversationType === "class"
+                ? "/dashboard"
+                : undefined,
+        })
+    ));
+}
+
 export function publishAdviserAiNotification(lecturerId, notification) {
     if (!socketServer || !lecturerId || !notification) return;
     socketServer.to(userRoom(lecturerId)).emit("adviser:ai-notification", notification);
+}
+
+export function publishChatReaction(conversationId, reaction) {
+    if (!socketServer || !conversationId || !reaction) return;
+    socketServer.to(roomName(conversationId)).emit("chat:reaction", reaction);
 }
 
 function getToken(socket) {
@@ -78,6 +98,10 @@ function roomName(conversationId) {
 
 function userRoom(userId) {
     return `user:${userId}`;
+}
+
+function cohortRoom(departmentId, session) {
+    return `cohort:${departmentId}:${encodeURIComponent(session)}`;
 }
 
 function sendResult(socket, acknowledge, result) {
@@ -114,6 +138,16 @@ export function configureChatSocket(io) {
 
     io.on("connection", (socket) => {
         void socket.join(userRoom(socket.data.user.id));
+        if (
+            socket.data.user.department_id &&
+            socket.data.user.session &&
+            (socket.data.user.role === "student" ||
+                (socket.data.user.role === "lecturer" && socket.data.user.is_verified))
+        ) {
+            void socket.join(
+                cohortRoom(socket.data.user.department_id, socket.data.user.session)
+            );
+        }
 
         socket.on("chat:join", async (payload, acknowledge) => {
             try {
@@ -143,7 +177,8 @@ export function configureChatSocket(io) {
                 const message = await SendMessage(
                     payload?.conversationId,
                     socket.data.user,
-                    payload?.body
+                    payload?.body,
+                    payload?.replyToId
                 );
                 void publishChatMessage(message).catch((error) => {
                     console.error("[chat] Could not publish message notification:", error);

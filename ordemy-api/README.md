@@ -176,6 +176,8 @@ Responses larger than 1 MiB are not cached. Every successful non-GET API request
 
 The memory cache resets on restart and is not shared between API instances. Redis shares cached responses between instances. If Redis is temporarily unavailable, the API logs the cache error and bypasses caching so requests can still use MySQL; restore Redis to resume cache hits.
 
+High-volume chat and push-subscription mutations intentionally do not flush the shared response cache; cached lecturer question lists can therefore reflect new chat questions for up to the configured cache TTL.
+
 ## Endpoint index
 
 | Method | Endpoint | Access | Purpose |
@@ -192,9 +194,14 @@ The memory cache resets on restart and is not shared between API instances. Redi
 | `GET` | `/api/fetch/academic-structure` | Public | Fetch schools, faculties, and departments for profile selections |
 | `GET` | `/api/fetch/questions` | Verified lecturer | Get recent complaints, filters, and counts |
 | `GET` | `/api/chat/conversations` | Student, verified lecturer, or admin | List conversations available to the signed-in user |
+| `GET` | `/api/chat/unread-count` | Student, verified lecturer, or admin | Get the signed-in user's total unread chat count |
 | `POST` | `/api/chat/conversations` | Student | Open or retrieve a support, class-group, or matched lecturer conversation |
 | `GET` | `/api/chat/conversations/:id/messages` | Conversation participant or admin support | Read conversation messages |
 | `POST` | `/api/chat/conversations/:id/messages` | Conversation participant or admin support | Send a chat message |
+| `PUT` | `/api/chat/conversations/:id/messages/:messageId/reaction` | Conversation participant or admin support | Toggle a message reaction |
+| `GET` | `/api/notifications/push-config` | Signed-in user | Get the public browser push key |
+| `POST` | `/api/notifications/push-subscriptions` | Signed-in user | Register a browser push subscription |
+| `DELETE` | `/api/notifications/push-subscriptions` | Signed-in user | Remove a browser push subscription |
 | `POST` | `/api/class-rep/requests` | Signed-in student | Request class-rep status |
 | `GET` | `/api/class-rep/requests/mine` | Signed-in user | Check own class-rep request history |
 | `GET` | `/api/class-rep/requests` | Verified lecturer | List pending requests in own department |
@@ -956,6 +963,7 @@ The adviser endpoints are mounted under `/api/adviser` and require an authentica
 | `PATCH` | `/api/adviser/ai-notifications/:notificationId/read` | Mark one AI notification as read |
 | `PATCH` | `/api/adviser/ai-notifications/read-all` | Mark all AI notifications as read |
 | `POST` | `/api/adviser/ai-runs/trigger` | Immediately group this adviser's linked questions from the previous 24 hours |
+| `GET` | `/api/adviser/ai-runs/:runId/groups/:groupId/questions` | List the students and questions linked to a group |
 | `PATCH` | `/api/adviser/ai-runs/:runId/groups/:groupId` | Save an edited draft |
 | `POST` | `/api/adviser/ai-runs/:runId/groups/:groupId/send` | Send a reviewed draft to its students |
 | `PUT` | `/api/adviser/ai-runs/:runId/groups/:groupId/reply-rule` | Save or update this group's approved reply for future matching questions |
@@ -965,6 +973,12 @@ The scheduler checks hourly from 12:00 through 17:00 in `Africa/Lagos` when the 
 
 For an existing database, apply [`migrations/20261029_add_ai_auto_replies_notifications.sql`](./migrations/20261029_add_ai_auto_replies_notifications.sql) and then [`migrations/20261029_add_adviser_ai_reply_rules.sql`](./migrations/20261029_add_adviser_ai_reply_rules.sql), after the adviser AI tables exist. The first migration adds the auto-sent group marker and persistent adviser notifications; the second adds per-group approved reply rules. New databases receive these fields and tables through `data.sql`.
 
-The reply-rule routes accept `replyText` (1–10,000 characters) when saving. The scheduler writes startup, heartbeat, sleep-gap, catch-up and shutdown entries to `adviser_ai_scheduler_logs`; recovery is capped at 30 days. Daily department volume above 100 is marked critical in run logs and the adviser dashboard. Email alerts are not configured.
+For an existing database, apply the 20261105 migrations after their related chat/adviser AI tables are present: [`add_chat_replies_reactions`](./migrations/20261105_add_chat_replies_reactions.sql), [`add_adviser_group_alerts`](./migrations/20261105_add_adviser_group_alerts.sql), and [`add_web_push_subscriptions`](./migrations/20261105_add_web_push_subscriptions.sql). Fresh databases receive the schema from `data.sql`.
 
-Adviser chat uses the existing authenticated Socket.IO endpoint. Verified lecturers can list `/api/chat/class-sessions` for their assigned session and create or open that department group with `POST /api/chat/conversations` using `{ "type": "class", "session": "2022/2023" }`. Student-to-adviser conversations are matched by department and session. Every student message in a one-to-one adviser conversation is saved as a question and linked to the chat message, so it is available for adviser question grouping and bulk replies. Groq generates a subject and selects one of `Results`, `Facilities`, `Timetable`, or `Other`; if classification fails, the message is still saved with its text as the subject and type `Other`, and the REST/socket response includes `question_analysis_status: "saved_with_default_type"`. Chat messages sent through REST or Socket.IO are broadcast to authorized conversation rooms.
+The reply-rule routes accept `replyText` (1–10,000 characters) when saving. Click a group to view its students' questions and the AI-generated response. Groups with more than 50 questions are highlighted; the scheduler saves a durable alert and emails the lecturer using Resend when `RESEND_API_KEY` and `RESEND_FROM_EMAIL` are configured. Failed deliveries remain queued for a later scheduler run. Use a verified sender address from Resend. Daily department volume above 100 remains a separate run-level indicator.
+
+Browser push notifications use Web Push and require HTTPS (except localhost). Generate VAPID keys with `npx web-push generate-vapid-keys`, then set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` in the API environment. The private key must remain server-side. Users enable push from Settings; inactive/expired subscriptions are removed when the push provider rejects them.
+
+Adviser chat uses the existing authenticated Socket.IO endpoint. Verified lecturers can list `/api/chat/class-sessions` for their assigned session and create or open that department group with `POST /api/chat/conversations` using `{ "type": "class", "session": "2022/2023" }`. Student-to-adviser conversations are matched by department and session. Every student message in a one-to-one adviser conversation is saved as a question and linked to the chat message, so it is available for adviser question grouping and bulk replies. Replies retain a reference to the original message, including AI-group replies, and users can react with an emoji. Groq generates a subject and selects one of `Results`, `Facilities`, `Timetable`, or `Other`; if classification fails, the message is still saved with its text as the subject and type `Other`, and the REST/socket response includes `question_analysis_status: "saved_with_default_type"`. Chat messages sent through REST or Socket.IO are broadcast to authorized conversation rooms.
+
+Chat history is loaded in pages of 50, adviser conversations in pages of 100, and unread badges use a count-only endpoint. Class-chat events use department/session Socket.IO rooms instead of loading every cohort member into an API process; Web Push alerts are sent for direct/support chats and high-volume adviser alerts (not fanned out to every class member). Set `DB_CONNECTION_LIMIT` based on the database's connection budget and the number of API instances. For multiple API instances, configure `SOCKET_REDIS_ENABLED=true` and a shared `REDIS_URL`; Redis distributes Socket.IO events across instances. These are scale-enabling changes, not a guarantee of 100,000 concurrent sessions without production load tests and appropriately sized database, Redis, and API infrastructure.

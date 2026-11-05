@@ -108,12 +108,23 @@ export const markConversationRead = (conversationId: string) =>
 export const sendConversationMessage = (
   conversationId: string,
   body: string,
+  replyToId?: number,
 ) =>
   apiRequest<{ data: ChatMessage }>(
     `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
     {
       method: "POST",
       token: getToken(),
-      body: { body },
+      body: { body, replyToId },
     },
+  );
+
+export const toggleConversationMessageReaction = (
+  conversationId: string,
+  messageId: number,
+  emoji: string,
+) =>
+  apiRequest<{ data: { id: number; reactions: NonNullable<ChatMessage["reactions"]> } }>(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages/${messageId}/reaction`,
+    { method: "PUT", token: getToken(), body: { emoji } },
   );

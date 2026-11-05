@@ -1,5 +1,5 @@
 import { apiRequest, tokenStorage } from "../../lib/api";
-import { connectChatSocket } from "../../utils/chat-socket";
+import { connectChatSocket, disconnectChatSocket } from "../../utils/chat-socket";
 import type {
   ChatConversation,
   ChatMessage,
@@ -36,6 +36,19 @@ export interface AiGroup {
   matched_reply_rule_id: number | null;
   created_at: string;
   sent_at: string | null;
+  high_volume: boolean;
+  question_categories: { category: string; question_count: number }[];
+}
+
+export interface AiGroupQuestion {
+  id: number;
+  subject: string;
+  query: string;
+  query_type: string;
+  created_at: string;
+  student_id: string;
+  student_name: string;
+  student_image: string | null;
 }
 
 export interface AiRun {
@@ -48,6 +61,7 @@ export interface AiRun {
   started_at: string;
   completed_at: string | null;
   groups: AiGroup[];
+  high_volume_categories: { category: string; question_count: number }[];
 }
 
 export interface SchedulerLog {
@@ -95,6 +109,12 @@ export const fetchAiRuns = () =>
     token: getToken(),
     cache: "no-store",
   });
+
+export const fetchAiGroupQuestions = (runId: number, groupId: number) =>
+  apiRequest<{ data: AiGroupQuestion[] }>(
+    `/api/adviser/ai-runs/${runId}/groups/${groupId}/questions`,
+    { token: getToken(), cache: "no-store" },
+  );
 
 export const fetchSchedulerLogs = () =>
   apiRequest<{ data: SchedulerLog[] }>("/api/adviser/scheduler-logs", {
@@ -193,11 +213,14 @@ export const deleteLecturerCourse = (id: number) =>
     token: getToken(),
   });
 
-export const fetchAdviserConversations = () =>
-  apiRequest<{ data: ChatConversation[] }>("/api/chat/conversations", {
+export const fetchAdviserConversations = (before?: string) =>
+  apiRequest<{ data: ChatConversation[]; next_cursor: string | null }>(
+    `/api/chat/conversations${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+    {
     token: getToken(),
     cache: "no-store",
-  });
+    },
+  );
 
 export const fetchAdviserMessages = (conversationId: string) =>
   apiRequest<{ data: ChatMessage[] }>(
@@ -214,16 +237,31 @@ export const markAdviserConversationRead = (conversationId: string) =>
 export const sendAdviserMessage = (
   conversationId: string,
   body: string,
+  replyToId?: number,
 ) =>
   apiRequest<{ data: ChatMessage }>(
     `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
     {
       method: "POST",
       token: getToken(),
-      body: { body },
+      body: { body, replyToId },
     },
+  );
+
+export const toggleAdviserMessageReaction = (
+  conversationId: string,
+  messageId: number,
+  emoji: string,
+) =>
+  apiRequest<{ data: { id: number; reactions: NonNullable<ChatMessage["reactions"]> } }>(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages/${messageId}/reaction`,
+    { method: "PUT", token: getToken(), body: { emoji } },
   );
 
 export function connectAdviserSocket() {
   return connectChatSocket();
+}
+
+export function disconnectAdviserSocket(socket: ReturnType<typeof connectChatSocket>) {
+  disconnectChatSocket(socket);
 }

@@ -316,7 +316,25 @@ export async function ListClassSessions(user) {
     return { data: rows.map(({ session }) => session) };
 }
 
-export async function ListConversations(user) {
+export async function ListConversations(user, query = {}) {
+    let beforeUpdatedAt = null;
+    let beforeId = null;
+    if (query.before !== undefined) {
+        const [date, id, extra] = String(query.before).split("|");
+        const parsedDate = Date.parse(`${date.replace(" ", "T")}Z`);
+        if (
+            extra !== undefined ||
+            !id ||
+            !CONVERSATION_ID_PATTERN.test(id) ||
+            !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(date) ||
+            Number.isNaN(parsedDate) ||
+            new Date(parsedDate).toISOString().slice(0, 19).replace("T", " ") !== date
+        ) {
+            throw new HttpError(400, "before must be a valid conversation cursor");
+        }
+        beforeUpdatedAt = date;
+        beforeId = id;
+    }
     let condition;
     let values;
     if (user.role === "student") {
@@ -362,6 +380,7 @@ export async function ListConversations(user) {
         `SELECT conversation.id, conversation.type, conversation.student_id,
                 conversation.lecturer_id, conversation.class_session,
                 conversation.created_at, conversation.updated_at,
+                DATE_FORMAT(conversation.updated_at, '%Y-%m-%d %H:%i:%s') AS cursor_updated_at,
                 student.name AS student_name, student.image AS student_image,
                 lecturer.name AS lecturer_name, lecturer.image AS lecturer_image,
                 class_department.name AS class_department,
@@ -390,10 +409,69 @@ export async function ListConversations(user) {
                 LIMIT 1
            )
          WHERE ${condition}
-         ORDER BY COALESCE(latest.created_at, conversation.updated_at) DESC`,
-        [user.id, user.id, ...values]
+           AND (
+               ? IS NULL OR conversation.updated_at < ?
+               OR (conversation.updated_at = ? AND conversation.id < ?)
+           )
+         ORDER BY conversation.updated_at DESC, conversation.id DESC
+         LIMIT 100`,
+        [user.id, user.id, ...values, beforeUpdatedAt, beforeUpdatedAt, beforeUpdatedAt, beforeId]
     );
-    return { data: rows };
+    const last = rows[rows.length - 1];
+    return {
+        data: rows.map(({ cursor_updated_at, ...row }) => row),
+        next_cursor: rows.length === 100 ? `${last.cursor_updated_at}|${last.id}` : null,
+    };
+}
+
+export async function GetUnreadChatCount(user) {
+    let cohort = null;
+    if (user.role === "student" || (user.role === "lecturer" && user.is_verified)) {
+        const [userRows] = await pool.query(
+            `SELECT department_id, session FROM users
+             WHERE id = ? AND role = ?${user.role === "lecturer" ? " AND is_verified = TRUE" : ""}`,
+            [user.id, user.role]
+        );
+        if (!userRows[0]) throw new HttpError(403, "Chat access is not available for this account");
+        cohort = userRows[0];
+    } else if (user.role !== "admin") {
+        throw new HttpError(403, "Chat access is not available for this account");
+    }
+    let condition;
+    let values;
+    if (user.role === "student") {
+        condition = `(
+            conversation.student_id = ?
+            OR (conversation.type = 'class'
+                AND conversation.class_department_id = ?
+                AND conversation.class_session = ?)
+        )`;
+        values = [user.id, cohort.department_id, cohort.session];
+    } else if (user.role === "lecturer") {
+        condition = `(
+            (conversation.type = 'lecturer' AND conversation.lecturer_id = ?)
+            OR (conversation.type = 'class'
+                AND conversation.class_department_id = ?
+                AND conversation.class_session = ?)
+        )`;
+        values = [user.id, cohort.department_id, cohort.session];
+    } else {
+        condition = "conversation.type = 'support'";
+        values = [];
+    }
+    const [rows] = await pool.query(
+        `SELECT COUNT(*) AS unread_count
+         FROM chat_conversations AS conversation
+         INNER JOIN chat_messages AS message
+           ON message.conversation_id = conversation.id
+         LEFT JOIN chat_read_receipts AS receipt
+           ON receipt.conversation_id = conversation.id AND receipt.user_id = ?
+         WHERE ${condition}
+           AND message.sender_id <> ?
+           AND message.id > COALESCE(receipt.last_read_message_id, 0)`,
+        [user.id, ...values, user.id]
+    );
+    return { data: { unread_count: Number(rows[0].unread_count) } };
 }
 
 export async function MarkConversationRead(conversationId, user) {
@@ -428,7 +506,8 @@ export async function ListMessages(conversationId, user, query = {}) {
     const [rows] = await pool.query(
         `SELECT message.id, message.conversation_id, message.sender_id,
                 sender.name AS sender_name, sender.image AS sender_image,
-                message.query_id, message.body, message.created_at,
+                message.query_id, message.reply_to_message_id, message.body, message.created_at,
+                replied.body AS reply_to_body, replied_sender.name AS reply_to_sender_name,
                 EXISTS (
                     SELECT 1
                     FROM class_rep_requests AS class_rep
@@ -439,18 +518,57 @@ export async function ListMessages(conversationId, user, query = {}) {
                 ) AS sender_is_class_rep
          FROM chat_messages AS message
          INNER JOIN users AS sender ON sender.id = message.sender_id
+         LEFT JOIN chat_messages AS replied ON replied.id = message.reply_to_message_id
+         LEFT JOIN users AS replied_sender ON replied_sender.id = replied.sender_id
          WHERE message.conversation_id = ?
            AND (? IS NULL OR message.id < ?)
          ORDER BY message.id DESC
          LIMIT ?`,
         [conversationId, beforeId, beforeId, limit]
     );
-    return { data: rows.reverse() };
+    const messages = rows.reverse();
+    await AttachMessageReactions(messages, user.id);
+    return { data: messages };
 }
 
-export async function SendMessage(conversationId, user, body) {
+async function AttachMessageReactions(messages, userId) {
+    if (!messages.length) return;
+    const ids = messages.map((message) => message.id);
+    const [rows] = await pool.query(
+        `SELECT reaction.message_id, reaction.emoji,
+                COUNT(*) AS count, MAX(reaction.user_id = ?) AS reacted
+         FROM chat_message_reactions AS reaction
+         WHERE reaction.message_id IN (${ids.map(() => "?").join(",")})
+         GROUP BY reaction.message_id, reaction.emoji`,
+        [userId, ...ids]
+    );
+    const reactionsByMessage = new Map();
+    for (const row of rows) {
+        const reactions = reactionsByMessage.get(row.message_id) ?? [];
+        reactions.push({
+            emoji: row.emoji,
+            count: Number(row.count),
+            reacted: Boolean(row.reacted),
+        });
+        reactionsByMessage.set(row.message_id, reactions);
+    }
+    for (const message of messages) message.reactions = reactionsByMessage.get(message.id) ?? [];
+}
+
+export async function SendMessage(conversationId, user, body, replyToIdValue = null) {
     const messageBody = ValidateMessage(body);
     const conversation = await AuthorizeConversation(conversationId, user);
+    const replyToId = replyToIdValue == null ? null : Number(replyToIdValue);
+    if (replyToId !== null && (!Number.isSafeInteger(replyToId) || replyToId <= 0)) {
+        throw new HttpError(400, "replyToId must be a positive message ID");
+    }
+    if (replyToId !== null) {
+        const [replyRows] = await pool.query(
+            "SELECT id FROM chat_messages WHERE id = ? AND conversation_id = ?",
+            [replyToId, conversationId]
+        );
+        if (!replyRows[0]) throw new HttpError(400, "Reply target must be in this conversation");
+    }
     const shouldClassifyQuestion =
         user.role === "student" && conversation.type === "lecturer";
     let questionClassification = null;
@@ -496,9 +614,10 @@ export async function SendMessage(conversationId, user, body) {
             queryId = queryResult.insertId;
         }
         const [result] = await connection.query(
-            `INSERT INTO chat_messages (conversation_id, sender_id, query_id, body)
-             VALUES (?, ?, ?, ?)`,
-            [conversationId, user.id, queryId, messageBody]
+            `INSERT INTO chat_messages
+                (conversation_id, sender_id, query_id, reply_to_message_id, body)
+             VALUES (?, ?, ?, ?, ?)`,
+            [conversationId, user.id, queryId, replyToId, messageBody]
         );
         await connection.query(
             "UPDATE chat_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -507,8 +626,9 @@ export async function SendMessage(conversationId, user, body) {
         const [rows] = await connection.query(
             `SELECT message.id, message.conversation_id, message.sender_id,
                     sender.name AS sender_name, sender.image AS sender_image,
-                    message.query_id,
+                    message.query_id, message.reply_to_message_id,
                     message.body, message.created_at,
+                    replied.body AS reply_to_body, replied_sender.name AS reply_to_sender_name,
                     EXISTS (
                         SELECT 1
                         FROM class_rep_requests AS class_rep
@@ -519,12 +639,16 @@ export async function SendMessage(conversationId, user, body) {
                     ) AS sender_is_class_rep
              FROM chat_messages AS message
              INNER JOIN users AS sender ON sender.id = message.sender_id
+             LEFT JOIN chat_messages AS replied ON replied.id = message.reply_to_message_id
+             LEFT JOIN users AS replied_sender ON replied_sender.id = replied.sender_id
              WHERE message.id = ?`,
             [result.insertId]
         );
+        const message = rows[0];
         await connection.commit();
+        message.reactions = [];
         return {
-            ...rows[0],
+            ...message,
             ...(shouldClassifyQuestion
                 ? {
                     question_analysis_status: questionAnalysisStatus,
@@ -533,6 +657,64 @@ export async function SendMessage(conversationId, user, body) {
                         : {}),
                 }
                 : {}),
+        };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
+}
+
+export async function ToggleMessageReaction(conversationId, messageIdValue, user, emoji) {
+    const messageId = Number(messageIdValue);
+    if (!Number.isSafeInteger(messageId) || messageId <= 0) {
+        throw new HttpError(400, "A valid message ID is required");
+    }
+    const supportedEmojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+    if (!supportedEmojis.includes(emoji)) throw new HttpError(400, "Unsupported reaction");
+    await AuthorizeConversation(conversationId, user);
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [messageRows] = await connection.query(
+            "SELECT id FROM chat_messages WHERE id = ? AND conversation_id = ? FOR UPDATE",
+            [messageId, conversationId]
+        );
+        if (!messageRows[0]) throw new HttpError(404, "Message not found");
+        const [reactionRows] = await connection.query(
+            "SELECT emoji FROM chat_message_reactions WHERE message_id = ? AND user_id = ?",
+            [messageId, user.id]
+        );
+        if (reactionRows[0]?.emoji === emoji) {
+            await connection.query(
+                "DELETE FROM chat_message_reactions WHERE message_id = ? AND user_id = ?",
+                [messageId, user.id]
+            );
+        } else {
+            await connection.query(
+                `INSERT INTO chat_message_reactions (message_id, user_id, emoji)
+                 VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), created_at = CURRENT_TIMESTAMP`,
+                [messageId, user.id, emoji]
+            );
+        }
+        const [rows] = await connection.query(
+            `SELECT emoji, COUNT(*) AS count,
+                    MAX(user_id = ?) AS reacted
+             FROM chat_message_reactions
+             WHERE message_id = ?
+             GROUP BY emoji`,
+            [user.id, messageId]
+        );
+        await connection.commit();
+        return {
+            id: messageId,
+            reactions: rows.map((row) => ({
+                emoji: row.emoji,
+                count: Number(row.count),
+                reacted: Boolean(row.reacted),
+            })),
         };
     } catch (error) {
         await connection.rollback();
@@ -554,7 +736,7 @@ export async function AuthenticateChatToken(token) {
         throw new HttpError(401, "Invalid or expired token");
     }
     const [rows] = await pool.query(
-        "SELECT id, name, role, is_verified FROM users WHERE id = ?",
+        "SELECT id, name, role, is_verified, department_id, session FROM users WHERE id = ?",
         [payload.id]
     );
     const user = rows[0];

@@ -1,5 +1,6 @@
 import {
     GetAdviserDashboard,
+    ListAiGroupQuestions,
     ListAiNotifications,
     ListAiRuns,
     ListSchedulerLogs,
@@ -18,6 +19,12 @@ export async function getDashboard(req, res) {
 
 export async function listAiRuns(req, res) {
     return res.status(200).json(await ListAiRuns(req.authUser.id));
+}
+
+export async function listAiGroupQuestions(req, res) {
+    return res.status(200).json(
+        await ListAiGroupQuestions(req.authUser.id, req.params.runId, req.params.groupId)
+    );
 }
 
 export async function listSchedulerLogs(req, res) {
