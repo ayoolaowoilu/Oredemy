@@ -113,6 +113,19 @@ export const fetchAiRuns = (before?: string) =>
     },
   );
 
+export const triggerAiGrouping = () =>
+  apiRequest<{
+    data: {
+      status: AiRun["status"];
+      question_count: number;
+      error_message: string | null;
+    };
+  }>("/api/adviser/ai-runs/trigger", {
+    method: "POST",
+    token: getToken(),
+    body: {},
+  });
+
 export const fetchAiGroupQuestions = (runId: number, groupId: number) =>
   apiRequest<{ data: AiGroupQuestion[] }>(
     `/api/adviser/ai-runs/${runId}/groups/${groupId}/questions`,
