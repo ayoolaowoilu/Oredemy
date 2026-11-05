@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Ban, Bell, Bot, Check, Clock3, RefreshCw, Repeat2, Send, Sparkles } from "lucide-react";
+import { Ban, Bell, Bot, Check, Clock3, RefreshCw, Repeat2, Send, Sparkles, UsersRound } from "lucide-react";
 import { ApiError } from "../../lib/api";
 import {
   connectAdviserSocket,
+  disconnectAdviserSocket,
   cancelAiReplyRule,
   fetchAiRuns,
+  fetchAiGroupQuestions,
   fetchAiNotifications,
   fetchSchedulerLogs,
   markAiNotificationRead,
@@ -14,6 +16,7 @@ import {
   updateAiDraft,
   type AiNotification,
   type AiRun,
+  type AiGroupQuestion,
   type SchedulerLog,
 } from "./api";
 import { AdviserCard, AdviserNotice, AdviserPageIntro } from "./shared";
@@ -34,6 +37,9 @@ export default function AdviserAi() {
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [expandedGroup, setExpandedGroup] = useState<number | null>(null);
+  const [groupQuestions, setGroupQuestions] = useState<Record<number, AiGroupQuestion[]>>({});
+  const [loadingGroup, setLoadingGroup] = useState<number | null>(null);
 
   const loadRuns = useCallback(async () => {
     setError("");
@@ -93,15 +99,17 @@ export default function AdviserAi() {
     void initialize();
 
     const socket = connectAdviserSocket();
-    socket.on("adviser:ai-notification", (notification: AiNotification) => {
+    const onAiNotification = (notification: AiNotification) => {
       setNotifications((current) => [
         notification,
         ...current.filter((item) => item.id !== notification.id),
       ].slice(0, 30));
       setNotice(notification.message);
-    });
+    };
+    socket.on("adviser:ai-notification", onAiNotification);
     return () => {
-      socket.disconnect();
+      socket.off("adviser:ai-notification", onAiNotification);
+      disconnectAdviserSocket(socket);
     };
   }, [loadNotifications]);
 
@@ -216,6 +224,25 @@ export default function AdviserAi() {
     }
   }
 
+  async function toggleGroupQuestions(runId: number, groupId: number) {
+    if (expandedGroup === groupId) {
+      setExpandedGroup(null);
+      return;
+    }
+    setExpandedGroup(groupId);
+    if (groupQuestions[groupId]) return;
+    setLoadingGroup(groupId);
+    try {
+      const response = await fetchAiGroupQuestions(runId, groupId);
+      setGroupQuestions((current) => ({ ...current, [groupId]: response.data }));
+    } catch (loadError: unknown) {
+      setError(loadError instanceof Error ? loadError.message : "Could not load students in this group.");
+      setExpandedGroup(null);
+    } finally {
+      setLoadingGroup(null);
+    }
+  }
+
   const groups = runs.flatMap((run) =>
     run.groups.map((group) => ({ ...group, runStatus: run.status, runKey: run.slot_key })),
   );
@@ -324,7 +351,12 @@ export default function AdviserAi() {
         <div className="space-y-5">
           {runs.map((run) =>
             run.groups.map((group) => (
-              <AdviserCard key={group.id}>
+              <AdviserCard
+                key={group.id}
+                className={group.high_volume
+                  ? "border border-rose-300 shadow-[0_0_24px_rgba(244,63,94,0.28)] ring-1 ring-rose-300"
+                  : ""}
+              >
                 <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -332,8 +364,20 @@ export default function AdviserAi() {
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${group.status === "sent" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
                         {group.auto_sent ? "Auto-sent" : group.status === "sent" ? "Sent" : "Needs review"}
                       </span>
-                      {run.severity === "critical" && (
-                        <span className="rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-bold uppercase text-rose-700">High volume day</span>
+                      {group.high_volume && (
+                        <span className="animate-pulse rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold uppercase text-rose-800">
+                          {group.question_categories
+                            .filter((category) => run.high_volume_categories.some(
+                              (alert) => alert.category === category.category,
+                            ))
+                            .map((category) => {
+                              const alert = run.high_volume_categories.find(
+                                (item) => item.category === category.category,
+                              );
+                              return `${category.category}: ${alert?.question_count ?? 0} today`;
+                            })
+                            .join(" · ")} questions — lecturer alert
+                        </span>
                       )}
                     </div>
                     <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
@@ -344,6 +388,41 @@ export default function AdviserAi() {
                     Run {run.status}
                   </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void toggleGroupQuestions(run.id, group.id)}
+                  aria-expanded={expandedGroup === group.id}
+                  className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-xs font-semibold text-slate-700 hover:bg-[#F1EDFF]"
+                >
+                  <UsersRound size={14} />
+                  {expandedGroup === group.id
+                    ? "Hide students and questions"
+                    : `View ${group.question_ids.length} student question${group.question_ids.length === 1 ? "" : "s"}`}
+                </button>
+                {expandedGroup === group.id && (
+                  <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3">
+                    {loadingGroup === group.id ? (
+                      <p className="text-xs text-slate-500">Loading questions…</p>
+                    ) : (groupQuestions[group.id] ?? []).map((question) => (
+                      <div key={question.id} className="flex items-start gap-2 rounded-lg bg-white p-3">
+                        <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[#F1EDFF] text-[10px] font-bold text-[#2501FF]">
+                          {question.student_image
+                            ? <img src={question.student_image} alt="" className="size-full object-cover" />
+                            : question.student_name.slice(0, 1)}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-800">{question.student_name}</p>
+                          <p className="mt-0.5 text-[10px] text-slate-400">{question.subject} · {question.query_type}</p>
+                          <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{question.query}</p>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="rounded-lg border border-[#2501FF]/10 bg-white p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#2501FF]">AI-generated response for this issue</p>
+                      <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{group.draft_reply}</p>
+                    </div>
+                  </div>
+                )}
                 <label className="mt-5 block">
                   <span className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-400">Reply draft</span>
                   <textarea

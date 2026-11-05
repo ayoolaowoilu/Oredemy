@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BookOpen,
+  Bell,
   ChevronRight,
   LayoutDashboard,
   LogOut,
@@ -183,6 +184,18 @@ export default function StudentLayout() {
               </div>
 
               <div className="flex items-center gap-3">
+                <NavLink
+                  to="/dashboard/student/chat"
+                  aria-label={`${unreadCount} unread messages`}
+                  className="relative grid size-10 place-items-center rounded-xl text-slate-500 hover:bg-slate-50 hover:text-[#2501FF]"
+                >
+                  <Bell size={19} />
+                  {unreadCount > 0 && (
+                    <span className="absolute right-0 top-0 grid min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
+                      {unreadBadge}
+                    </span>
+                  )}
+                </NavLink>
                 <div className="hidden max-w-[180px] text-right sm:block">
                   <p className="truncate text-sm font-bold text-slate-800">{user?.name}</p>
                   <p className="truncate text-[11px] text-slate-400">Student</p>

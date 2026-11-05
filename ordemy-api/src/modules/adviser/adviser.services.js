@@ -115,6 +115,7 @@ export async function ListAiRuns(lecturerId) {
     );
     const runIds = runs.map((run) => run.id);
     let groups = [];
+    let highVolumeAlerts = [];
     if (runIds.length > 0) {
         const [groupRows] = await pool.query(
             `SELECT question_group.id, question_group.run_id, question_group.title,
@@ -140,13 +141,98 @@ export async function ListAiRuns(lecturerId) {
                 ? JSON.parse(group.question_ids)
                 : group.question_ids,
         }));
+        const groupIds = groups.map((group) => group.id);
+        const [categoryRows] = groupIds.length
+            ? await pool.query(
+                `SELECT question_group.id AS group_id,
+                        query_item.query_type AS category,
+                        COUNT(DISTINCT query_item.id) AS question_count
+                 FROM adviser_ai_groups AS question_group
+                 JOIN JSON_TABLE(
+                     question_group.question_ids,
+                     '$[*]' COLUMNS (query_id INT PATH '$')
+                 ) AS linked_question
+                 INNER JOIN queries AS query_item ON query_item.id = linked_question.query_id
+                 WHERE question_group.id IN (${groupIds.map(() => "?").join(",")})
+                 GROUP BY question_group.id, query_item.query_type`,
+                groupIds
+            )
+            : [[]];
+        const runDates = [...new Set(runs.map((run) => String(run.slot_key).slice(0, 10)))];
+        const [alertRows] = await pool.query(
+            `SELECT run_id, DATE_FORMAT(alert_date, '%Y-%m-%d') AS alert_date,
+                    category, question_count
+             FROM adviser_ai_group_alerts
+             WHERE lecturer_id = ? AND alert_date IN (${runDates.map(() => "?").join(",")})`,
+            [lecturerId, ...runDates]
+        );
+        highVolumeAlerts = alertRows;
+        groups = groups.map((group) => {
+            const categories = categoryRows
+                .filter((row) => row.group_id === group.id)
+                .map((row) => ({
+                    category: row.category,
+                    question_count: Number(row.question_count),
+                }));
+            const groupRunDate = String(
+                runs.find((run) => run.id === group.run_id)?.slot_key ?? ""
+            ).slice(0, 10);
+            const alertedCategories = new Set(alertRows.map((alert) => alert.category));
+            return {
+                ...group,
+                question_categories: categories,
+                high_volume: categories.some((item) =>
+                    alertedCategories.has(item.category) &&
+                    alertRows.some((alert) =>
+                        alert.category === item.category &&
+                        String(alert.alert_date).slice(0, 10) === groupRunDate
+                    )
+                ),
+            };
+        });
     }
     return {
         data: runs.map((run) => ({
             ...run,
+            high_volume_categories: highVolumeAlerts
+                .filter((alert) => String(alert.alert_date).slice(0, 10) === String(run.slot_key).slice(0, 10))
+                .map((alert) => ({
+                    category: alert.category,
+                    question_count: Number(alert.question_count),
+                })),
             groups: groups.filter((group) => group.run_id === run.id),
         })),
     };
+}
+
+export async function ListAiGroupQuestions(lecturerId, runIdValue, groupIdValue) {
+    const runId = parseId(runIdValue, "runId");
+    const groupId = parseId(groupIdValue, "groupId");
+    const [groups] = await pool.query(
+        `SELECT question_group.question_ids
+         FROM adviser_ai_groups AS question_group
+         INNER JOIN adviser_ai_runs AS batch_run ON batch_run.id = question_group.run_id
+         WHERE question_group.id = ? AND batch_run.id = ?
+           AND batch_run.lecturer_id = ?`,
+        [groupId, runId, lecturerId]
+    );
+    if (!groups[0]) throw new HttpError(404, "AI question group not found");
+    const ids = typeof groups[0].question_ids === "string"
+        ? JSON.parse(groups[0].question_ids)
+        : groups[0].question_ids;
+    if (!Array.isArray(ids) || ids.length === 0) return { data: [] };
+    const [questions] = await pool.query(
+        `SELECT query_item.id, query_item.subject, query_item.query,
+                query_item.query_type, query_item.created_at,
+                student.id AS student_id, student.name AS student_name,
+                student.image AS student_image
+         FROM queries AS query_item
+         INNER JOIN users AS student ON student.id = query_item.user_id
+         WHERE query_item.id IN (${ids.map(() => "?").join(",")})
+         ORDER BY query_item.created_at DESC, query_item.id DESC`,
+        ids
+    );
+    return { data: questions };
 }
 
 export async function ListSchedulerLogs(lecturerId) {
@@ -212,9 +298,20 @@ export async function CreateAiRunNotification(
     autoSentCount,
 ) {
     if (groupCount < 1) return;
-    const message = autoSentCount > 0
+    let message = autoSentCount > 0
         ? `AI grouped ${groupCount} similar question${groupCount === 1 ? "" : "s"} and automatically answered ${autoSentCount} group${autoSentCount === 1 ? "" : "s"}.`
         : `AI grouped similar student questions into ${groupCount} group${groupCount === 1 ? "" : "s"} for your review.`;
+    const [alerts] = await pool.query(
+        `SELECT category, question_count
+         FROM adviser_ai_group_alerts
+         WHERE run_id = ?`,
+        [runId]
+    );
+    if (alerts.length) {
+        message += ` High-volume alert: ${alerts.map(
+            (alert) => `${alert.category} (${alert.question_count})`
+        ).join(", ")} questions crossed 50 today.`;
+    }
     const [result] = await pool.query(
         `INSERT IGNORE INTO adviser_ai_notifications (lecturer_id, run_id, message)
          VALUES (?, ?, ?)`,
@@ -404,13 +501,14 @@ export async function SendAiGroup(
             throw new HttpError(500, "AI draft has no linked questions");
         }
         const [conversationRows] = await connection.query(
-            `SELECT DISTINCT conversation.id
+            `SELECT conversation.id, MIN(question_message.id) AS reply_to_message_id
              FROM chat_conversations AS conversation
              INNER JOIN chat_messages AS question_message
                ON question_message.conversation_id = conversation.id
              WHERE conversation.type = 'lecturer'
                AND conversation.lecturer_id = ?
-               AND question_message.query_id IN (${questionIds.map(() => "?").join(",")})`,
+               AND question_message.query_id IN (${questionIds.map(() => "?").join(",")})
+             GROUP BY conversation.id`,
             [lecturerId, ...questionIds]
         );
         if (conversationRows.length === 0) {
@@ -418,11 +516,13 @@ export async function SendAiGroup(
         }
         for (const conversation of conversationRows) {
             const [messageResult] = await connection.query(
-                `INSERT INTO chat_messages (conversation_id, sender_id, body)
-                 VALUES (?, ?, ?)`,
+                `INSERT INTO chat_messages
+                    (conversation_id, sender_id, reply_to_message_id, body)
+                 VALUES (?, ?, ?, ?)`,
                 [
                     conversation.id,
                     lecturerId,
+                    conversation.reply_to_message_id,
                     automated
                         ? group.reply_text
                         : group.draft_reply,
@@ -435,10 +535,13 @@ export async function SendAiGroup(
             const [messageRows] = await connection.query(
                 `SELECT message.id, message.conversation_id, message.sender_id,
                         lecturer.name AS sender_name, lecturer.image AS sender_image,
-                        message.query_id,
+                        message.query_id, message.reply_to_message_id,
+                        replied.body AS reply_to_body, replied_sender.name AS reply_to_sender_name,
                         message.body, message.created_at
                  FROM chat_messages AS message
                  INNER JOIN users AS lecturer ON lecturer.id = message.sender_id
+                 LEFT JOIN chat_messages AS replied ON replied.id = message.reply_to_message_id
+                 LEFT JOIN users AS replied_sender ON replied_sender.id = replied.sender_id
                  WHERE message.id = ?`,
                 [messageResult.insertId]
             );

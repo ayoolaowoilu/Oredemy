@@ -58,6 +58,7 @@ CREATE TABLE users (
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
+    INDEX idx_users_role_department_session (role, department_id, session),
     CONSTRAINT fk_users_faculty
         FOREIGN KEY (faculty_id)
         REFERENCES faculties(id)
@@ -117,6 +118,7 @@ CREATE TABLE queries(
      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
      INDEX idx_queries_session_user (session, user_id),
      INDEX idx_queries_session_type_created (session, query_type, created_at),
+     INDEX idx_queries_session_created_user (session, created_at, user_id),
      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -131,6 +133,7 @@ CREATE TABLE chat_conversations (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_chat_conversations_student (student_id, updated_at),
     INDEX idx_chat_conversations_lecturer (lecturer_id, updated_at),
+    INDEX idx_chat_conversations_class_cohort (type, class_department_id, class_session),
     UNIQUE KEY uq_chat_conversations_class (type, class_department_id, class_session),
     CONSTRAINT fk_chat_conversations_student
         FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -145,16 +148,34 @@ CREATE TABLE chat_messages (
     conversation_id VARCHAR(36) NOT NULL,
     sender_id VARCHAR(36) NOT NULL,
     query_id INT NULL,
+    reply_to_message_id BIGINT NULL,
     body MEDIUMTEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_chat_messages_conversation (conversation_id, id),
+    INDEX idx_chat_messages_unread (conversation_id, id, sender_id),
     UNIQUE KEY uq_chat_messages_query (query_id),
+    INDEX idx_chat_messages_reply_to (reply_to_message_id),
     CONSTRAINT fk_chat_messages_conversation
         FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
     CONSTRAINT fk_chat_messages_sender
         FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_chat_messages_query
-        FOREIGN KEY (query_id) REFERENCES queries(id) ON DELETE SET NULL
+        FOREIGN KEY (query_id) REFERENCES queries(id) ON DELETE SET NULL,
+    CONSTRAINT fk_chat_messages_reply_to
+        FOREIGN KEY (reply_to_message_id) REFERENCES chat_messages(id) ON DELETE SET NULL
+);
+
+CREATE TABLE chat_message_reactions (
+    message_id BIGINT NOT NULL,
+    user_id VARCHAR(36) NOT NULL,
+    emoji VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (message_id, user_id),
+    INDEX idx_chat_message_reactions_message (message_id),
+    CONSTRAINT fk_chat_message_reaction_message
+        FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+    CONSTRAINT fk_chat_message_reaction_user
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE chat_read_receipts (
@@ -237,6 +258,25 @@ CREATE TABLE adviser_ai_notifications (
         FOREIGN KEY (run_id) REFERENCES adviser_ai_runs(id) ON DELETE CASCADE
 );
 
+CREATE TABLE adviser_ai_group_alerts (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    lecturer_id VARCHAR(36) NOT NULL,
+    run_id BIGINT NOT NULL,
+    alert_date DATE NOT NULL,
+    category ENUM('Results', 'Facilities', 'Timetable', 'Other') NOT NULL,
+    question_count INT NOT NULL,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    email_sent BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    emailed_at TIMESTAMP NULL,
+    UNIQUE KEY uq_adviser_ai_group_alert_category (lecturer_id, alert_date, category),
+    INDEX idx_adviser_ai_group_alert_lecturer (lecturer_id, is_read, created_at),
+    CONSTRAINT fk_adviser_ai_group_alert_lecturer
+        FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_adviser_ai_group_alert_run
+        FOREIGN KEY (run_id) REFERENCES adviser_ai_runs(id) ON DELETE CASCADE
+);
+
 CREATE TABLE adviser_ai_scheduler_logs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     lecturer_id VARCHAR(36) NULL,
@@ -247,4 +287,17 @@ CREATE TABLE adviser_ai_scheduler_logs (
     INDEX idx_adviser_scheduler_log_lecturer (lecturer_id, created_at),
     CONSTRAINT fk_adviser_scheduler_log_lecturer
         FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE user_push_subscriptions (
+    endpoint_hash CHAR(64) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    endpoint TEXT NOT NULL,
+    p256dh VARCHAR(255) NOT NULL,
+    auth VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_push_subscriptions_user (user_id),
+    CONSTRAINT fk_user_push_subscriptions_user
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

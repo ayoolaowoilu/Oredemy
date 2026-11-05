@@ -4,6 +4,7 @@ import {
     getDashboard,
     listAiNotifications,
     listAiRuns,
+    listAiGroupQuestions,
     listSchedulerLogs,
     markAiNotificationRead,
     markAllAiNotificationsRead,
@@ -19,6 +20,7 @@ router.use(authenticate, requireVerifiedLecturer);
 
 router.get("/dashboard", getDashboard);
 router.get("/ai-runs", listAiRuns);
+router.get("/ai-runs/:runId/groups/:groupId/questions", listAiGroupQuestions);
 router.get("/scheduler-logs", listSchedulerLogs);
 router.get("/ai-notifications", listAiNotifications);
 router.patch("/ai-notifications/read-all", markAllAiNotificationsRead);

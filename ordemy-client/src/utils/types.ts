@@ -172,8 +172,12 @@ export interface ChatMessage {
     sender_name: string;
     sender_image?: string | null;
     query_id: number | null;
+    reply_to_message_id?: number | null;
+    reply_to_body?: string | null;
+    reply_to_sender_name?: string | null;
     body: string;
     created_at: string;
+    reactions?: { emoji: string; count: number; reacted: boolean }[];
     sender_is_class_rep?: boolean | number;
     question_analysis_status?: "saved" | "saved_with_default_type";
     question_type?: "Results" | "Facilities" | "Timetable" | "Other";

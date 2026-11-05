@@ -163,6 +163,7 @@ export async function cacheSuccessfulGet(req, res, next) {
 
 export function invalidateCacheOnMutation(req, res, next) {
     if (req.method === "GET" || req.method === "HEAD") return next();
+    if (/^\/api\/(chat|notifications)(?:\/|$)/.test(req.originalUrl)) return next();
 
     const sendJson = res.json.bind(res);
     res.json = async (body) => {

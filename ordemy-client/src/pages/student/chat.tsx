@@ -4,15 +4,17 @@ import { ArrowDown, LoaderCircle, MessageCircle, RefreshCw, Send } from "lucide-
 import { useAuth } from "../../context/useAuth";
 import { notifyChatRead } from "../../hooks/use-chat-unread-count";
 import { ApiError } from "../../lib/api";
-import { connectChatSocket } from "../../utils/chat-socket";
+import { connectChatSocket, disconnectChatSocket } from "../../utils/chat-socket";
 import type { ChatConversation, ChatMessage } from "../../utils/types";
 import { UserAvatar } from "../../components/user-avatar";
+import { ChatMessageControls } from "../../components/chat-message-controls";
 import {
   createAdviserConversation,
   fetchChatConversations,
   fetchConversationMessages,
   markConversationRead,
   sendConversationMessage,
+  toggleConversationMessageReaction,
 } from "./api";
 import { Card, Notice, PrimaryButton } from "./shared";
 
@@ -21,6 +23,7 @@ export default function StudentChat() {
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
@@ -70,15 +73,24 @@ export default function StudentChat() {
         });
       }
     };
+    const onReaction = (reaction: { id: number; reactions: NonNullable<ChatMessage["reactions"]> }) => {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === reaction.id ? { ...message, reactions: reaction.reactions } : message,
+        ),
+      );
+    };
     const onConnect = () => join();
     socket.on("chat:message", onMessage);
+    socket.on("chat:reaction", onReaction);
     socket.on("connect", onConnect);
     if (socket.connected) onConnect();
     return () => {
       if (socket.connected) socket.emit("chat:leave", { conversationId });
       socket.off("connect", onConnect);
       socket.off("chat:message", onMessage);
-      socket.disconnect();
+      socket.off("chat:reaction", onReaction);
+      disconnectChatSocket(socket);
       socketRef.current = null;
     };
   }, [conversationId, markRead, user?.id]);
@@ -233,7 +245,7 @@ export default function StudentChat() {
     if (socket?.connected) {
       socket.timeout(30_000).emit(
         "chat:message",
-        { conversationId: conversation.id, body: draft.trim() },
+        { conversationId: conversation.id, body: draft.trim(), replyToId: replyTarget?.id },
         (
           timeoutError: Error | null,
           result?: { ok: boolean; data?: ChatMessage; error?: { message: string } },
@@ -255,12 +267,13 @@ export default function StudentChat() {
           );
           showQuestionAnalysis(message);
           setDraft("");
+          setReplyTarget(null);
         },
       );
       return;
     }
     try {
-      const response = await sendConversationMessage(conversation.id, draft.trim());
+      const response = await sendConversationMessage(conversation.id, draft.trim(), replyTarget?.id);
       setMessages((current) =>
         current.some((existing) => existing.id === response.data.id)
           ? current
@@ -269,6 +282,7 @@ export default function StudentChat() {
       showQuestionAnalysis(response.data);
       await markRead(conversation.id);
       setDraft("");
+      setReplyTarget(null);
     } catch (sendError) {
       setError(
         sendError instanceof Error
@@ -277,6 +291,20 @@ export default function StudentChat() {
       );
     } finally {
       setSending(false);
+    }
+  }
+
+  async function react(message: ChatMessage, emoji: string) {
+    if (!conversation) return;
+    try {
+      const response = await toggleConversationMessageReaction(conversation.id, message.id, emoji);
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id ? { ...item, reactions: response.data.reactions } : item,
+        ),
+      );
+    } catch (reactionError: unknown) {
+      setError(reactionError instanceof Error ? reactionError.message : "Reaction could not be saved.");
     }
   }
 
@@ -369,9 +397,14 @@ export default function StudentChat() {
                     className="size-7 shrink-0 sm:size-8"
                   />
                   <article className={`min-w-0 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 ${isMine ? "rounded-br-md bg-[#2501FF] text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-800"}`}>
-                    <p className="whitespace-pre-wrap break-words text-[13px] leading-5 sm:text-sm sm:leading-6">
+                    <p className="whitespace-pre-wrap break-words text-xs leading-[1.15rem] sm:text-sm sm:leading-6">
                       {message.body}
                     </p>
+                    <ChatMessageControls
+                      message={message}
+                      onReply={setReplyTarget}
+                      onReact={(item, emoji) => void react(item, emoji)}
+                    />
                     <p className={`mt-2 text-right text-[10px] ${isMine ? "text-white/65" : "text-slate-400"}`}>
                       {new Intl.DateTimeFormat(undefined, {
                         hour: "numeric",
@@ -407,8 +440,19 @@ export default function StudentChat() {
 
         <form
           onSubmit={send}
-          className="flex shrink-0 items-end gap-2 border-t border-slate-100 bg-white p-2.5 sm:gap-3 sm:p-4"
+          className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-white p-2.5 sm:gap-3 sm:p-4"
         >
+          {replyTarget && (
+            <div className="flex items-center gap-2 rounded-lg bg-[#F7F5FF] px-3 py-2 text-[11px] text-slate-600">
+              <span className="min-w-0 flex-1 truncate">
+                Replying to <b>{replyTarget.sender_name}</b>: {replyTarget.body}
+              </span>
+              <button type="button" onClick={() => setReplyTarget(null)} className="shrink-0 font-bold text-[#2501FF]">
+                Cancel
+              </button>
+            </div>
+          )}
+          <div className="flex items-end gap-2 sm:gap-3">
           <label className="sr-only" htmlFor="adviser-chat-message">
             Write a message to your adviser
           </label>
@@ -443,6 +487,7 @@ export default function StudentChat() {
             </span>
             <Send size={16} />
           </PrimaryButton>
+          </div>
         </form>
         </>
         ) : (

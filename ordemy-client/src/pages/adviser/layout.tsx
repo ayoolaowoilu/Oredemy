@@ -16,11 +16,16 @@ import {
 import { useAuth } from "../../context/useAuth";
 import { useChatUnreadCount } from "../../hooks/use-chat-unread-count";
 import { UserAvatar } from "../../components/user-avatar";
-import { connectAdviserSocket, fetchAiNotifications, type AiNotification } from "./api";
+import {
+  connectAdviserSocket,
+  disconnectAdviserSocket,
+  fetchAiNotifications,
+  type AiNotification,
+} from "./api";
 
 const links = [
   { label: "Home", to: "/dashboard/adviser", icon: LayoutDashboard, end: true },
-  { label: "AI review", to: "/dashboard/adviser/ai", icon: Bot },
+  { label: "Grouped questions", to: "/dashboard/adviser/ai", icon: Bot },
   { label: "Class reps", to: "/dashboard/adviser/class-reps", icon: CheckCheck },
   { label: "Courses", to: "/dashboard/adviser/courses", icon: BookOpen },
   { label: "Chats", to: "/dashboard/adviser/chat", icon: MessageCircle },
@@ -70,12 +75,14 @@ export default function AdviserLayout() {
 
   useEffect(() => {
     const socket = connectAdviserSocket();
-    socket.on("adviser:ai-notification", (notification: AiNotification) => {
+    const onAiNotification = (notification: AiNotification) => {
       setAiUnread((count) => count + 1);
       setAiToast(notification);
-    });
+    };
+    socket.on("adviser:ai-notification", onAiNotification);
     return () => {
-      socket.disconnect();
+      socket.off("adviser:ai-notification", onAiNotification);
+      disconnectAdviserSocket(socket);
     };
   }, []);
 
@@ -112,7 +119,7 @@ export default function AdviserLayout() {
                     {unreadBadge}
                   </span>
                 )}
-                {label === "AI review" && aiUnread > 0 && (
+                {label === "Grouped questions" && aiUnread > 0 && (
                   <span className="grid min-w-5 place-items-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                     {aiUnreadBadge}
                   </span>
@@ -186,7 +193,7 @@ export default function AdviserLayout() {
                         {unreadBadge}
                       </span>
                     )}
-                    {label === "AI review" && aiUnread > 0 && (
+                    {label === "Grouped questions" && aiUnread > 0 && (
                       <span className="grid min-w-5 place-items-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                         {aiUnreadBadge}
                       </span>
@@ -219,7 +226,7 @@ export default function AdviserLayout() {
                     onClick={() => setAiToast(null)}
                     className="mt-2 inline-block text-xs font-bold text-[#2501FF] hover:underline"
                   >
-                    View AI review
+                    View grouped questions
                   </Link>
                 </div>
                 <button
@@ -250,6 +257,18 @@ export default function AdviserLayout() {
               </div>
 
               <div className="flex items-center gap-3">
+                <Link
+                  to="/dashboard/adviser/chat"
+                  aria-label={`${unreadCount} unread messages`}
+                  className="relative grid size-10 place-items-center rounded-xl text-slate-500 hover:bg-slate-50 hover:text-[#2501FF]"
+                >
+                  <BellRing size={19} />
+                  {unreadCount > 0 && (
+                    <span className="absolute right-0 top-0 grid min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
+                      {unreadBadge}
+                    </span>
+                  )}
+                </Link>
                 <div className="hidden max-w-[180px] text-right sm:block">
                   <p className="truncate text-sm font-bold text-slate-800">{user?.name}</p>
                   <p className="truncate text-[11px] text-slate-400">

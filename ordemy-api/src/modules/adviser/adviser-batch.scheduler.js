@@ -9,6 +9,7 @@ import {
 } from "./adviser.services.js";
 
 const TIME_ZONE = "Africa/Lagos";
+const GROUP_ALERT_THRESHOLD = 50;
 const SCHEDULE_HOURS = [12, 13, 14, 15, 16, 17];
 const POLL_INTERVAL_MS = 60_000;
 let interval;
@@ -250,6 +251,92 @@ async function countDailyQuestions(departmentId, session, dateFrom, dateTo) {
     return Number(rows[0].total);
 }
 
+async function sendHighVolumeGroupAlerts(lecturerId, runId, alertDate, session, from, to) {
+    const [categories] = await pool.query(
+        `SELECT query_item.query_type AS category,
+                COUNT(DISTINCT query_item.id) AS question_count
+         FROM queries AS query_item
+         INNER JOIN chat_messages AS question_message
+           ON question_message.query_id = query_item.id
+         INNER JOIN chat_conversations AS conversation
+           ON conversation.id = question_message.conversation_id
+         WHERE conversation.type = 'lecturer'
+           AND conversation.lecturer_id = ?
+           AND query_item.session = ?
+           AND query_item.created_at >= ? AND query_item.created_at < ?
+         GROUP BY query_item.query_type
+         HAVING COUNT(DISTINCT query_item.id) > ?`,
+        [lecturerId, session, from, to, GROUP_ALERT_THRESHOLD]
+    );
+    for (const category of categories) {
+        const [insertResult] = await pool.query(
+            `INSERT IGNORE INTO adviser_ai_group_alerts
+             (lecturer_id, run_id, alert_date, category, question_count)
+             VALUES (?, ?, ?, ?, ?)`,
+            [lecturerId, runId, alertDate, category.category, category.question_count]
+        );
+        if (insertResult.affectedRows > 0) {
+            const { SendPushNotification } = await import("../notifications/notifications.services.js");
+            await SendPushNotification(lecturerId, {
+                title: "High-volume student questions",
+                body: `${category.category} has reached ${category.question_count} questions today.`,
+                url: "/dashboard/adviser/ai",
+            });
+        }
+    }
+
+    if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
+        if (categories.length) {
+            console.warn("[adviser-ai] High-volume groups found; configure RESEND_API_KEY and RESEND_FROM_EMAIL to email lecturers");
+        }
+        return;
+    }
+    const [lecturers] = await pool.query(
+        "SELECT email FROM users WHERE id = ? AND role = 'lecturer'",
+        [lecturerId]
+    );
+    if (!lecturers[0]?.email) return;
+    const [alerts] = await pool.query(
+        `SELECT alert.id, alert.category, alert.question_count
+         FROM adviser_ai_group_alerts AS alert
+         WHERE alert.lecturer_id = ? AND alert.email_sent = FALSE
+         ORDER BY alert.created_at ASC
+         LIMIT 20`,
+        [lecturerId]
+    );
+    for (const alert of alerts) {
+        try {
+            const response = await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": `ordemy-group-alert-${alert.id}`,
+                },
+                body: JSON.stringify({
+                    from: process.env.RESEND_FROM_EMAIL,
+                    to: [lecturers[0].email],
+                    subject: `High-volume student questions: ${alert.category}`,
+                    text: `The ${alert.category} category has reached ${alert.question_count} student questions today. Review the grouped questions and AI-generated responses in your Ordemy adviser dashboard.`,
+                }),
+            });
+            if (!response.ok) {
+                console.error(`[adviser-ai] Resend rejected group alert ${alert.id}: HTTP ${response.status}`);
+                continue;
+            }
+        } catch (error) {
+            console.error(`[adviser-ai] Could not deliver group alert ${alert.id}:`, error);
+            continue;
+        }
+        await pool.query(
+            `UPDATE adviser_ai_group_alerts
+             SET email_sent = TRUE, emailed_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND email_sent = FALSE`,
+            [alert.id]
+        );
+    }
+}
+
 async function processSlot(lecturer, slot) {
     const [insertResult] = await pool.query(
         `INSERT IGNORE INTO adviser_ai_runs
@@ -298,6 +385,8 @@ async function processSlot(lecturer, slot) {
     try {
         const dailyStart = getSlotDate(new Date(slot.scheduledAt.getTime() + 1), 12).from;
         const dailyEnd = new Date(dailyStart.getTime() + 24 * 60 * 60 * 1000);
+        const dailyDate = getLagosParts(dailyStart);
+        const alertDate = `${dailyDate.year}-${dailyDate.month}-${dailyDate.day}`;
         const dailyCount = await countDailyQuestions(
             lecturer.department_id,
             lecturer.session,
@@ -359,6 +448,14 @@ async function processSlot(lecturer, slot) {
              SET question_count = ?, severity = ?
              WHERE id = ?`,
             [questionCount, severity, runId]
+        );
+        await sendHighVolumeGroupAlerts(
+            lecturer.id,
+            runId,
+            alertDate,
+            lecturer.session,
+            dailyStart,
+            dailyEnd
         );
 
         if (questionCount > 0) {
