@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Ban, Bell, Bot, Check, Clock3, RefreshCw, Repeat2, Send, Sparkles, UsersRound } from "lucide-react";
+import { Ban, Bell, Bot, Check, Clock3, LoaderCircle, Play, RefreshCw, Repeat2, Send, Sparkles, UsersRound } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../../lib/api";
 import {
@@ -14,6 +14,7 @@ import {
   markAllAiNotificationsRead,
   saveAiReplyRule,
   sendAiDraft,
+  triggerAiGrouping,
   updateAiDraft,
   type AiNotification,
   type AiRun,
@@ -138,6 +139,7 @@ export default function AdviserAi() {
   const [olderLoaded, setOlderLoaded] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
+  const [triggeringAi, setTriggeringAi] = useState(false);
   const [schedulerLogs, setSchedulerLogs] = useState<SchedulerLog[]>([]);
   const [notifications, setNotifications] = useState<AiNotification[]>([]);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
@@ -449,6 +451,30 @@ export default function AdviserAi() {
     }
   }
 
+  async function runAiGrouping() {
+    setTriggeringAi(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await triggerAiGrouping();
+      const run = response.data;
+      setNotice(
+        run.status === "completed"
+          ? `AI grouping finished. Processed ${run.question_count} question${run.question_count === 1 ? "" : "s"}.`
+          : `AI grouping run status: ${run.status}.`,
+      );
+      await refreshQuestions();
+    } catch (triggerError: unknown) {
+      setError(
+        triggerError instanceof ApiError || triggerError instanceof Error
+          ? triggerError.message
+          : "Could not trigger AI grouping.",
+      );
+    } finally {
+      setTriggeringAi(false);
+    }
+  }
+
   function navigateToCategory(category: string) {
     navigate(`/dashboard/adviser/ai/${selectedPeriod}/${encodeURIComponent(category)}`);
   }
@@ -469,6 +495,19 @@ export default function AdviserAi() {
             : "Review recent AI-grouped student questions by category, with older history kept separate."}
         action={
           <div className="flex flex-wrap gap-2">
+            {!selectedCategory && !selectedGroupId && (
+              <button
+                type="button"
+                onClick={() => void runAiGrouping()}
+                disabled={triggeringAi || loading || previewMode}
+                className="inline-flex items-center gap-2 rounded-full bg-[#2501FF] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1d00d6] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {triggeringAi
+                  ? <LoaderCircle size={15} className="animate-spin" />
+                  : <Play size={15} />}
+                {triggeringAi ? "Grouping questions…" : "Run AI grouping"}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
