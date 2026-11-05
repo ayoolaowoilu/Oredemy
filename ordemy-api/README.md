@@ -900,16 +900,17 @@ For an existing database, also apply [`migrations/20261029_add_courses_and_class
 
 ## Testing courses, class-rep revocation, and AI grouping
 
-After applying the schema and course migration, run [`testing/ai-test-seed.sql`](./testing/ai-test-seed.sql) against a test database. It creates one verified lecturer, four students, a school/faculty/department, sample current-session courses, an approved class representative, and recent linked questions. The sample accounts all use `test123`:
+After applying the schema and course migration, run [`testing/ai-test-seed.sql`](./testing/ai-test-seed.sql) against a test database. It creates two verified lecturers, four students, a school/faculty/department, sample current-session courses, an approved class representative, and 20 recent linked questions for each lecturer. The sample accounts all use `test123`:
 
 | Role | Email |
 | --- | --- |
-| Lecturer | `ai-lecturer@example.test` |
+| Lecturer 1 | `ai-lecturer@example.test` |
+| Lecturer 2 | `ai-lecturer2@example.test` |
 | Student | `ai-student1@example.test` |
 
 The seed also creates `ai-student2@example.test`, `ai-student3@example.test`, and `ai-student4@example.test`. Do not use these credentials or run the seed against production.
 
-With a valid lecturer token, call the protected `POST /api/adviser/ai-runs/trigger` route to process lecturer questions from the previous 24 hours immediately, rather than waiting for the scheduled 12:00–17:00 Africa/Lagos window. Configure `GROQ_API_KEY` in the API environment first. Questions must be linked to the lecturer chat and have the lecturer's cohort session. If the run fails, check **AI review** and the API logs. The AI review page does not expose a manual run button.
+With a valid lecturer token, call the protected `POST /api/adviser/ai-runs/trigger` route to process lecturer questions from the previous 24 hours immediately, rather than waiting for the scheduled 12:00–17:00 Africa/Lagos window. Configure `GROQ_API_KEY` in the API environment first. Questions must be linked to the lecturer chat and have the lecturer's cohort session. If the run fails, check **Questions** and the API logs.
 
 Sign in as the sample student to see the current-level course list under **Curriculum**. The adviser can add courses from **Courses** and revoke the seeded representative from **Class reps**.
 

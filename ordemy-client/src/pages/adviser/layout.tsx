@@ -25,7 +25,7 @@ import {
 
 const links = [
   { label: "Home", to: "/dashboard/adviser", icon: LayoutDashboard, end: true },
-  { label: "Grouped questions", to: "/dashboard/adviser/ai", icon: Bot },
+  { label: "Questions", to: "/dashboard/adviser/ai", icon: Bot },
   { label: "Class reps", to: "/dashboard/adviser/class-reps", icon: CheckCheck },
   { label: "Courses", to: "/dashboard/adviser/courses", icon: BookOpen },
   { label: "Chats", to: "/dashboard/adviser/chat", icon: MessageCircle },

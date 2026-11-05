@@ -104,11 +104,14 @@ export const fetchAdviserDashboard = () =>
     cache: "no-store",
   });
 
-export const fetchAiRuns = () =>
-  apiRequest<{ data: AiRun[] }>("/api/adviser/ai-runs", {
-    token: getToken(),
-    cache: "no-store",
-  });
+export const fetchAiRuns = (before?: string) =>
+  apiRequest<{ data: AiRun[]; next_cursor: string | null }>(
+    `/api/adviser/ai-runs${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+    {
+      token: getToken(),
+      cache: "no-store",
+    },
+  );
 
 export const fetchAiGroupQuestions = (runId: number, groupId: number) =>
   apiRequest<{ data: AiGroupQuestion[] }>(
