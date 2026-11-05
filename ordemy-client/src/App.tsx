@@ -63,6 +63,9 @@ export default function App() {
         <Route path="/dashboard/adviser" element={<AdviserLayout />}>
           <Route index element={<AdviserOverview />} />
           <Route path="ai" element={<AdviserAi />} />
+          <Route path="ai/:period" element={<AdviserAi />} />
+          <Route path="ai/:period/:category" element={<AdviserAi />} />
+          <Route path="ai/:period/:category/:groupId" element={<AdviserAi />} />
           <Route path="class-reps" element={<AdviserClassReps />} />
           <Route path="courses" element={<AdviserCourses />} />
           <Route path="chat" element={<AdviserChat />} />

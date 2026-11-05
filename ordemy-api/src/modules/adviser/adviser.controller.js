@@ -18,7 +18,7 @@ export async function getDashboard(req, res) {
 }
 
 export async function listAiRuns(req, res) {
-    return res.status(200).json(await ListAiRuns(req.authUser.id));
+    return res.status(200).json(await ListAiRuns(req.authUser.id, req.query.before));
 }
 
 export async function listAiGroupQuestions(req, res) {

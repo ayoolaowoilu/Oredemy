@@ -84,8 +84,19 @@ export async function GetAdviserDashboard(lecturerId) {
     };
 }
 
-export async function ListAiRuns(lecturerId) {
+export async function ListAiRuns(lecturerId, beforeValue) {
     const departmentId = await getLecturerDepartment(lecturerId);
+    let beforeSlot = null;
+    if (beforeValue !== undefined) {
+        if (
+            typeof beforeValue !== "string" ||
+            !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(beforeValue) ||
+            Number.isNaN(Date.parse(`${beforeValue}Z`))
+        ) {
+            throw new HttpError(400, "before must be a valid AI run cursor");
+        }
+        beforeSlot = beforeValue;
+    }
     const [runs] = await pool.query(
         `SELECT id, slot_key, status, question_count, severity, error_message,
                 started_at, completed_at
@@ -98,20 +109,31 @@ export async function ListAiRuns(lecturerId) {
                        SELECT id
                        FROM adviser_ai_runs
                        WHERE lecturer_id = ? AND department_id = ?
+                         AND (? IS NULL OR slot_key < ?)
                        ORDER BY slot_key DESC
                        LIMIT 24
                    ) AS recent
                )
-               OR id IN (
+               OR (? IS NULL AND id IN (
                    SELECT source_group.run_id
                    FROM adviser_ai_reply_rules AS reply_rule
                    INNER JOIN adviser_ai_groups AS source_group
                      ON source_group.id = reply_rule.source_group_id
                    WHERE reply_rule.lecturer_id = ? AND reply_rule.is_active = TRUE
-               )
+               ))
            )
-         ORDER BY slot_key DESC`,
-        [lecturerId, departmentId, lecturerId, departmentId, lecturerId]
+         ORDER BY slot_key DESC
+         LIMIT 24`,
+        [
+            lecturerId,
+            departmentId,
+            lecturerId,
+            departmentId,
+            beforeSlot,
+            beforeSlot,
+            beforeSlot,
+            lecturerId,
+        ]
     );
     const runIds = runs.map((run) => run.id);
     let groups = [];
@@ -202,6 +224,7 @@ export async function ListAiRuns(lecturerId) {
                 })),
             groups: groups.filter((group) => group.run_id === run.id),
         })),
+        next_cursor: runs.length === 24 ? runs[runs.length - 1].slot_key : null,
     };
 }
 
